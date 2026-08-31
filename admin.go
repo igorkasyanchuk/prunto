@@ -5,8 +5,8 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"net/http"
-	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -106,7 +106,7 @@ func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request) {
 	view["Tokens"] = tokens
 	view["Events"] = events
 	view["Blocked"] = blocked
-	view["Minted"] = r.URL.Query().Get("token")
+	view["Minted"] = a.takeMintedToken(w, r)
 	a.render(w, "admin.html", view)
 }
 
@@ -117,7 +117,6 @@ func (a *App) handleAdminAction(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	id := r.PostFormValue("id")
-	redirect := "/admin"
 
 	var err error
 	switch r.PostFormValue("do") {
@@ -147,8 +146,7 @@ func (a *App) handleAdminAction(w http.ResponseWriter, r *http.Request) {
 		}
 		var raw string
 		if raw, err = MintToken(ctx, a.DB, label); err == nil {
-			// Shown once, on the next render, and never stored in the clear.
-			redirect = "/admin?token=" + url.QueryEscape(raw)
+			http.SetCookie(w, a.newMintedCookie(raw, 60))
 		}
 	default:
 		http.Error(w, "Unknown action", http.StatusBadRequest)
@@ -164,7 +162,35 @@ func (a *App) handleAdminAction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "That action failed", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, redirect, http.StatusSeeOther)
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+// mintedCookie carries a freshly minted token across the redirect to /admin.
+//
+// Not the query string: a token in a URL lands in browser history and in the access log of
+// every proxy in front of this origin, which is precisely what the API refuses a request over
+// (see ErrTokenInQuery). The cookie is read once and cleared on the render that shows it.
+const mintedCookie = "priito_minted"
+
+func (a *App) takeMintedToken(w http.ResponseWriter, r *http.Request) string {
+	c, err := r.Cookie(mintedCookie)
+	if err != nil {
+		return ""
+	}
+	http.SetCookie(w, a.newMintedCookie("", -1))
+	return c.Value
+}
+
+func (a *App) newMintedCookie(value string, maxAge int) *http.Cookie {
+	return &http.Cookie{
+		Name:     mintedCookie,
+		Value:    value,
+		Path:     "/admin",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   strings.HasPrefix(a.Config.BaseURL, "https://"),
+	}
 }
 
 func (a *App) openReports(ctx context.Context) ([]adminReport, error) {

@@ -1,5 +1,7 @@
 .git
 .github
 data
+/priito
+/priito-go
 *.md
 !templates/skill.md

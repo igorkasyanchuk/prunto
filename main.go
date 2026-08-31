@@ -79,17 +79,25 @@ func main() {
 		MaxHeaderBytes:    16 << 10,
 	}
 
+	// ListenAndServe returns the moment Shutdown is called, so main has to wait for the drain
+	// to finish. Falling straight through would run `defer db.Close()` under the requests
+	// still being served, and the 15 seconds below would buy nothing.
+	drained := make(chan struct{})
 	go func() {
+		defer close(drained)
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		srv.Shutdown(shutdown)
+		if err := srv.Shutdown(shutdown); err != nil {
+			logger.Printf("shutdown did not drain within 15s: %v", err)
+		}
 	}()
 
 	logger.Printf("priito listening on %s, serving %s", cfg.Addr, cfg.BaseURL)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatal(err)
 	}
+	<-drained
 }
 
 func runCommand(app *App, args []string) error {

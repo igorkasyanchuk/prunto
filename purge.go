@@ -39,9 +39,16 @@ func (a *App) PurgeExpired(ctx context.Context) {
 	var ids []int64
 	for rows.Next() {
 		var id int64
-		if err := rows.Scan(&id); err == nil {
-			ids = append(ids, id)
+		if err := rows.Scan(&id); err != nil {
+			a.Log.Printf("purge: reading the expiry list: %v", err)
+			break
 		}
+		ids = append(ids, id)
+	}
+	// A sweep that stopped early is not a sweep that found nothing; say so rather than
+	// leaving expired objects in the bucket with a silent log.
+	if err := rows.Err(); err != nil {
+		a.Log.Printf("purge: the expiry list ended early: %v", err)
 	}
 	rows.Close()
 

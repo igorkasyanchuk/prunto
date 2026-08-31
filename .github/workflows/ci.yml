@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
   image:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     permissions:
       contents: read
       packages: write

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,8 +89,22 @@ func LoadConfig() (Config, error) {
 			return c, fmt.Errorf("PRIITO_BASE_URL is required: it is the public origin this instance hands out in delete URLs and in the skill")
 		}
 	}
+
+	// Scheme and host, nothing else. Every failure downstream of a looser value is silent: the
+	// admin CSRF check compares this against an Origin header, which carries no path or query,
+	// so admin POSTs 403 forever; the delete URLs are built by concatenation, so anything after
+	// the host swallows the path glued onto it; and CDNOrigin below goes empty on a value with
+	// no scheme, which drops the CDN from the drop page's CSP and blocks the preview.
+	u, err := url.Parse(c.BaseURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+		u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return c, fmt.Errorf("PRIITO_BASE_URL must be a bare origin such as https://priito.example.com, got %q", c.BaseURL)
+	}
+
 	if c.Local() {
 		c.CDNBaseURL = c.BaseURL + "/blobs"
+	} else if u, err := url.Parse(c.CDNBaseURL); err != nil || u.Scheme == "" || u.Host == "" {
+		return c, fmt.Errorf("CDN_BASE_URL must be an absolute URL such as https://cdn.example.com, got %q", c.CDNBaseURL)
 	}
 	return c, nil
 }
@@ -102,6 +117,17 @@ func (c Config) Local() bool { return c.Bucket == "" }
 func (c Config) AdminEnabled() bool { return c.AdminUser != "" && c.AdminPassword != "" }
 
 func (c Config) DBPath() string { return filepath.Join(c.DataDir, "priito.db") }
+
+// CDNOrigin is the scheme://host blobs are served from, with no path. The drop page previews an
+// upload straight off it, so the page's CSP has to name the origin or the browser blocks the
+// preview - a CSP source with a path only matches that exact path, which CDNBaseURL is not.
+func (c Config) CDNOrigin() string {
+	u, err := url.Parse(c.CDNBaseURL)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
 
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {

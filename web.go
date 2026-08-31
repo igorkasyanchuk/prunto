@@ -81,9 +81,12 @@ func plural(n int, noun string) string {
 
 func (a *App) render(w http.ResponseWriter, name string, data map[string]any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// The drop page posts to this app and loads nothing off-origin.
+	// The drop page posts to this app and loads nothing but the preview off-origin, and that
+	// one comes from the CDN the blobs are served from.
+	cdn := a.Config.CDNOrigin()
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; base-uri 'none'; form-action 'self'")
+		"default-src 'self'; img-src 'self' blob: data: "+cdn+
+			"; media-src 'self' blob: "+cdn+"; base-uri 'none'; form-action 'self'")
 	if err := pages.ExecuteTemplate(w, name, data); err != nil {
 		a.Log.Printf("rendering %s: %v", name, err)
 	}
@@ -117,8 +120,12 @@ func (a *App) handleCreateAbuseReport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "This request did not arrive through the CDN", http.StatusForbidden)
 		return
 	}
+	// A limiter that cannot count fails open, but it does not fail silently: an operator has to
+	// be able to see why the reports stopped being throttled.
 	count, err := bump(r.Context(), a.DB, "reports:"+ip, 1, time.Hour)
-	if err == nil && count > ReportsPerHour {
+	if err != nil {
+		a.Log.Printf("abuse report rate limit: %v", err)
+	} else if count > ReportsPerHour {
 		http.Error(w, "Too many reports from this address, try again later", http.StatusTooManyRequests)
 		return
 	}

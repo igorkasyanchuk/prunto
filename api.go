@@ -67,16 +67,17 @@ func (a *App) handleCreateUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Daily byte cap. Claim first, check second, so two uploads racing on one token cannot
 	// both read the same figure and both pass. A rejected upload hands its claim straight back.
-	claimed, err := bump(r.Context(), a.DB, fmt.Sprintf("bytes:%d:%s", tokenID.Int64,
-		time.Now().UTC().Format(time.DateOnly)), int64(len(body)), 48*time.Hour)
+	// The key is built once: recomputing the date at refund time would credit the next day's
+	// counter for a claim made a second before UTC midnight.
+	capKey := fmt.Sprintf("bytes:%d:%s", tokenID.Int64, time.Now().UTC().Format(time.DateOnly))
+	claimed, err := bump(r.Context(), a.DB, capKey, int64(len(body)), 48*time.Hour)
 	if err != nil {
 		a.Log.Printf("daily cap: %v", err)
 		writeError(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
 	refund := func() {
-		if _, err := bump(r.Context(), a.DB, fmt.Sprintf("bytes:%d:%s", tokenID.Int64,
-			time.Now().UTC().Format(time.DateOnly)), -int64(len(body)), 48*time.Hour); err != nil {
+		if _, err := bump(r.Context(), a.DB, capKey, -int64(len(body)), 48*time.Hour); err != nil {
 			a.Log.Printf("refunding daily cap: %v", err)
 		}
 	}

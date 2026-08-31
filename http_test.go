@@ -397,3 +397,105 @@ func TestLocalBlobServesRanges(t *testing.T) {
 		t.Fatalf("body = %d bytes, want 8", got)
 	}
 }
+
+// The drop page previews the upload straight off the CDN, which is a different origin in every
+// real deployment. A CSP that only names 'self' leaves that preview blocked in production and
+// working locally, where the CDN is this host.
+func TestDropPageCSPNamesTheCDNOrigin(t *testing.T) {
+	app := newTestApp(t)
+	app.Config.CDNBaseURL = "https://cdn.example.test/blobs"
+
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://priito.test/", nil))
+
+	csp := w.Header().Get("Content-Security-Policy")
+	for _, want := range []string{
+		"img-src 'self' blob: data: https://cdn.example.test;",
+		"media-src 'self' blob: https://cdn.example.test;",
+	} {
+		if !strings.Contains(csp, want) {
+			t.Fatalf("CSP %q does not contain %q", csp, want)
+		}
+	}
+	if strings.Contains(csp, "/blobs") {
+		t.Fatalf("CSP carries a path, which only matches that exact path: %q", csp)
+	}
+}
+
+// A token in a URL lands in browser history and in every access log in front of the origin,
+// which is what the API refuses a request over. Minting must not put one there.
+func TestMintedTokenIsNeverInTheURL(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+
+	form := strings.NewReader("do=mint&label=laptop")
+	r := httptest.NewRequest(http.MethodPost, "http://priito.test/admin/actions", form)
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", app.Config.BaseURL)
+	r.SetBasicAuth("admin", "hunter2")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("mint returned %d, want %d", w.Code, http.StatusSeeOther)
+	}
+	if loc := w.Header().Get("Location"); loc != "/admin" {
+		t.Fatalf("the redirect carries the token: %q", loc)
+	}
+
+	var minted *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == mintedCookie {
+			minted = c
+		}
+	}
+	if minted == nil || !strings.HasPrefix(minted.Value, TokenPrefix) {
+		t.Fatalf("no minted token handed back in a cookie: %v", minted)
+	}
+	if !minted.HttpOnly || minted.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("the minted-token cookie is not locked down: %+v", minted)
+	}
+
+	// Shown once: the dashboard renders it and clears the cookie in the same response.
+	r = httptest.NewRequest(http.MethodGet, "http://priito.test/admin", nil)
+	r.AddCookie(minted)
+	r.SetBasicAuth("admin", "hunter2")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if !strings.Contains(w.Body.String(), minted.Value) {
+		t.Fatal("the dashboard did not show the minted token")
+	}
+	for _, c := range w.Result().Cookies() {
+		if c.Name == mintedCookie && c.MaxAge >= 0 {
+			t.Fatalf("the minted-token cookie was not cleared: %+v", c)
+		}
+	}
+}
+
+// PRIITO_BASE_URL is compared against an Origin header and used to derive the CSP's CDN source,
+// so a value that is not a bare origin has to stop the boot rather than silently disable both.
+func TestBaseURLMustBeABareOrigin(t *testing.T) {
+	notOrigins := []string{
+		"priito.test", "https://priito.test/sub", "ftp://priito.test", "https://",
+		"https://priito.test?v=2", "https://priito.test#x", "https://user@priito.test",
+	}
+	for _, bad := range notOrigins {
+		t.Run(bad, func(t *testing.T) {
+			t.Setenv("DATA_DIR", t.TempDir())
+			t.Setenv("PRIITO_BASE_URL", bad)
+			if _, err := LoadConfig(); err == nil {
+				t.Fatalf("LoadConfig accepted %q", bad)
+			}
+		})
+	}
+	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("PRIITO_BASE_URL", "https://priito.test/")
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CDNOrigin() != "https://priito.test" {
+		t.Fatalf("CDNOrigin = %q", cfg.CDNOrigin())
+	}
+}
