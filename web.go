@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	texttemplate "text/template"
 	"time"
@@ -74,18 +75,7 @@ func plural(n int, noun string) string {
 	if n == 1 {
 		return "1 " + noun
 	}
-	return strings.TrimSpace(strings.Join([]string{itoa(n), noun + "s"}, " "))
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b []byte
-	for ; n > 0; n /= 10 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-	}
-	return string(b)
+	return strconv.Itoa(n) + " " + noun + "s"
 }
 
 func (a *App) render(w http.ResponseWriter, name string, data map[string]any) {

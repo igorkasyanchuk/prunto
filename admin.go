@@ -122,9 +122,14 @@ func (a *App) handleAdminAction(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch r.PostFormValue("do") {
 	case "remove", "remove_block":
+		block := r.PostFormValue("do") == "remove_block"
+		action := "deleted"
+		if block {
+			action = "blocked"
+		}
 		var upload Upload
 		if upload, err = a.FindUploadBy(ctx, "id", id); err == nil {
-			err = a.Purge(ctx, upload, "blocked", r.PostFormValue("do") == "remove_block")
+			err = a.Purge(ctx, upload, action, block)
 		}
 	case "revoke":
 		_, err = a.DB.ExecContext(ctx,

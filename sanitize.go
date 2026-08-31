@@ -108,9 +108,6 @@ func isMP4(b []byte) bool {
 		case "isom", "iso2", "iso4", "iso5", "iso6", "mp41", "mp42", "avc1", "dash", "M4V ":
 			return true
 		}
-		if i == 12 { // skip the minor-version field that follows the major brand
-			continue
-		}
 	}
 	return false
 }
@@ -286,14 +283,16 @@ func stripJPEG(b []byte) ([]byte, int, int, error) {
 		}
 		i += 2 + length
 
-		if marker == 0xDA { // SOS - entropy-coded data runs to EOI
+		if marker == 0xDA { // SOS - entropy-coded data follows, outside the segment structure
 			end, err := jpegScanEnd(b, i)
 			if err != nil {
 				return nil, 0, 0, reject("This JPEG is truncated")
 			}
 			out = append(out, b[i:end]...)
-			out = append(out, 0xFF, 0xD9)
-			return out, w, h, nil
+			// A progressive JPEG has several scans, so this is not necessarily the end of the
+			// file - go back round and let the loop find the next marker. Treating the first
+			// scan as final would silently truncate every progressive image.
+			i = end
 		}
 	}
 }
@@ -310,11 +309,7 @@ func jpegScanEnd(b []byte, i int) (int, error) {
 		if next == 0x00 || next == 0xFF || (next >= 0xD0 && next <= 0xD7) {
 			continue
 		}
-		if next == 0xD9 {
-			return i, nil
-		}
-		// Any other marker means a further segment follows; treat it as the end of the scan
-		// so the caller stops rather than swallowing the rest of the file.
+		// Either EOI or the start of the next segment; both end this scan.
 		return i, nil
 	}
 	return 0, errTruncated

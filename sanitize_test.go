@@ -320,3 +320,53 @@ func TestRetentionIsCappedNotRefused(t *testing.T) {
 		t.Error("a nonsense expires_in was accepted")
 	}
 }
+
+// A progressive JPEG carries several scans. Treating the first one as the end of the file
+// would silently truncate every progressive image, which is most of what a "save for web"
+// export produces.
+func TestProgressiveJPEGKeepsEveryScan(t *testing.T) {
+	seg := func(marker byte, payload []byte) []byte {
+		out := []byte{0xFF, marker, byte((len(payload) + 2) >> 8), byte((len(payload) + 2) & 0xFF)}
+		return append(out, payload...)
+	}
+	// Entropy-coded data, including a stuffed FF00 that must not read as a marker.
+	scanOne := []byte{0x11, 0x22, 0xFF, 0x00, 0x33}
+	scanTwo := []byte{0x44, 0x55, 0xFF, 0x00, 0x66}
+
+	var b []byte
+	b = append(b, 0xFF, 0xD8)
+	// SOF2 (progressive): precision, height, width, one component.
+	b = append(b, seg(0xC2, []byte{8, 0, 16, 0, 16, 1, 1, 0x11, 0})...)
+	b = append(b, seg(0xE1, []byte("Exif\x00\x00GPS 51.5074 -0.1278"))...)
+	b = append(b, seg(0xC4, []byte{0x00, 0x01})...)
+	b = append(b, seg(0xDA, []byte{1, 1, 0x00, 0, 63, 0})...)
+	b = append(b, scanOne...)
+	b = append(b, seg(0xC4, []byte{0x01, 0x02})...)
+	b = append(b, seg(0xDA, []byte{1, 1, 0x00, 1, 63, 0})...)
+	b = append(b, scanTwo...)
+	b = append(b, 0xFF, 0xD9)
+	b = append(b, []byte("TRAILING PAYLOAD")...)
+
+	out, kind, err := Sanitize(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kind.Ext != "jpg" {
+		t.Fatalf("extension = %q, want jpg", kind.Ext)
+	}
+	if !bytes.Contains(out, scanOne) {
+		t.Error("the first scan was dropped")
+	}
+	if !bytes.Contains(out, scanTwo) {
+		t.Error("the second scan was dropped - a progressive image would be truncated")
+	}
+	if bytes.Contains(out, []byte("Exif")) || bytes.Contains(out, []byte("GPS 51.5074")) {
+		t.Error("the EXIF segment survived")
+	}
+	if bytes.Contains(out, []byte("TRAILING PAYLOAD")) {
+		t.Error("trailing bytes survived")
+	}
+	if !bytes.HasSuffix(out, []byte{0xFF, 0xD9}) {
+		t.Error("output does not end at EOI")
+	}
+}
