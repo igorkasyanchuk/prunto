@@ -35,25 +35,33 @@ TRUST_PROXY=none
 
 `PRUNTO_BASE_URL` has to match the domain exactly, scheme included and no trailing slash. It is
 what the app hands out in delete URLs and in the skill, and it is what the admin `Origin` check
-compares against — get it wrong and every admin action returns 403.
+compares against — get it wrong and every admin action returns 403. It is validated at boot as a
+bare origin: a path, a query, a fragment or credentials in it are all refused by name.
 
-**Deploy.** Then mint a token. Coolify → the resource → **Terminal**:
+**Turn the health check off.** Coolify's health check runs `curl` or `wget` *inside* the
+container. The image is `scratch`: it has neither, and no shell to run them from, so an enabled
+check marks the container unhealthy forever. Traefik still routes to it while the check is off.
+
+**Deploy.** Then mint a token — over SSH, not Coolify's web terminal, which opens a shell the
+image does not have. `docker exec` on the binary directly works, because it is static:
 
 ```bash
-/prunto token "my laptop"
+ssh root@your-server 'docker exec $(docker ps -qf name=prunto | head -1) /prunto token "my laptop"'
 ```
 
 Open the domain, paste the token into the drop page, drop a screenshot. Done.
-
-**Health check.** Coolify → Health Checks → Path `/up`. The image is `scratch`, so it has no
-shell and no `curl` — Coolify's own HTTP check is the only one that works here.
 
 ---
 
 ## 2. Make it real (bucket, CDN, and the checklist)
 
-Uploads have to be served from somewhere GitHub can fetch and from a domain that is not the
+Uploads have to be served from somewhere GitHub can fetch and from a hostname that is not the
 app's. This part is not optional if the instance is public.
+
+Prerequisite: `igorkasyanchuk.com` has to be on Cloudflare as a full zone — Transform Rules,
+Cache Rules and the CSAM scan below are all zone features, and the free plan carries all three.
+Both hostnames stay one level deep, which is all Universal SSL covers on a full setup; a
+`cdn.prunto.igorkasyanchuk.com` would need Total TLS or Advanced Certificate Manager instead.
 
 ### Backblaze B2
 
@@ -65,11 +73,16 @@ app's. This part is not optional if the instance is public.
 
 ### Cloudflare in front of it
 
-1. Add a CNAME for `cdn.yourdomain.com` pointing at the B2 endpoint host, proxied (orange
-   cloud). B2 is in Cloudflare's Bandwidth Alliance, so egress through this path is free.
-2. **Serve the CDN from a different domain than the app.** `cdn.prunto.dev`, never
-   `prunto.dev/files/...`. Uploads are attacker-controlled bytes, and a file on the app's own
-   origin that a browser decides to treat as HTML is stored XSS against the app's own cookies.
+1. Add a CNAME for `cdn-prunto.igorkasyanchuk.com` pointing at the B2 endpoint host, proxied
+   (orange cloud). B2 is in Cloudflare's Bandwidth Alliance, so egress through this path is
+   free.
+2. **Serve the CDN from a different hostname than the app.** `cdn-prunto.igorkasyanchuk.com`,
+   never `prunto.igorkasyanchuk.com/files/...`. Uploads are attacker-controlled bytes, and a
+   file on the app's own origin that a browser decides to treat as HTML is stored XSS against
+   the app's own credentials.
+3. Point `prunto.igorkasyanchuk.com` at the Coolify server too, also proxied. `TRUST_PROXY`
+   below refuses any request that arrives without `CF-Connecting-IP`, so the app hostname has
+   to be behind Cloudflare as well — not just the CDN.
 
 ### Response headers (Transform Rule)
 
@@ -77,7 +90,7 @@ B2 sets none of these, and this app is never in the serving path — the object 
 public URL. Since this port does not re-encode images, **these headers are the control**.
 
 Cloudflare → Rules → **Transform Rules** → **Modify Response Header**, matching
-`http.host eq "cdn.yourdomain.com"`, three static headers:
+`http.host eq "cdn-prunto.igorkasyanchuk.com"`, three static headers:
 
 | Header | Value | Why |
 | --- | --- | --- |
@@ -91,20 +104,20 @@ working and nothing looks wrong.
 
 ### Cache rule
 
-Add a Cache Rule that actually caches `cdn.yourdomain.com`. Two things depend on it: the free
-egress, and the CSAM scanning below, which only sees images that pass through the Cloudflare
-cache.
+Add a Cache Rule that actually caches `cdn-prunto.igorkasyanchuk.com`. Two things depend on
+it: the free egress, and the CSAM scanning below, which only sees images that pass through the
+Cloudflare cache.
 
 ### Environment
 
 ```
-PRUNTO_BASE_URL=https://prunto.yourdomain.com
+PRUNTO_BASE_URL=https://prunto.igorkasyanchuk.com
 B2_BUCKET=your-bucket
 B2_KEY_ID=...
 B2_APPLICATION_KEY=...
 B2_ENDPOINT=https://s3.us-west-004.backblazeb2.com
 B2_REGION=us-west-004
-CDN_BASE_URL=https://cdn.yourdomain.com
+CDN_BASE_URL=https://cdn-prunto.igorkasyanchuk.com
 ADMIN_USER=admin
 ADMIN_PASSWORD=<something long>
 TRUST_PROXY=cloudflare
@@ -115,7 +128,15 @@ limit is keyed on it, and a request arriving without that header is refused — 
 you find out the origin is reachable directly.
 
 Redeploy. Watch the logs for `CDN headers verified`. If the boot fails instead, the message
-names the header that is missing.
+names the header that is missing. Note the asymmetry: a probe that comes back with the wrong
+headers is fatal, but a probe that cannot be reached at all only warns — so a CDN hostname that
+is failing TLS will not stop the deploy.
+
+Set `TRUST_PROXY=cloudflare` **last**, once the app hostname actually resolves through
+Cloudflare. Flip it while the record is still grey-clouded and every request is refused,
+including your own. If Coolify's Let's Encrypt issuance fails behind the orange cloud, set
+Cloudflare SSL/TLS to **Full (strict)**, or grey-cloud the record until the certificate issues
+and proxy it again afterwards. Never leave it on **Flexible**; that is a redirect loop.
 
 ---
 

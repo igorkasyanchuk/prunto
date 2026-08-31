@@ -60,10 +60,10 @@ test suite never touches the network.
 
 ```bash
 curl -H "Authorization: Bearer $PRUNTO_TOKEN" -F "file=@shot.png" \
-  https://prunto.example/api/v1/uploads
+  https://prunto.igorkasyanchuk.com/api/v1/uploads
 
 curl -X DELETE -H "Authorization: Bearer $PRUNTO_TOKEN" \
-  https://prunto.example/api/v1/uploads/DELETE_TOKEN
+  https://prunto.igorkasyanchuk.com/api/v1/uploads/DELETE_TOKEN
 ```
 
 `POST /api/v1/uploads` → 201 with `url`, `markdown`, `content_type`, `delete_url`, `expires_at`
@@ -155,7 +155,7 @@ that would change.
 | `B2_KEY_ID` / `B2_APPLICATION_KEY` | Application key with read+write on that bucket |
 | `B2_ENDPOINT` | e.g. `https://s3.us-west-004.backblazeb2.com` |
 | `B2_REGION` | e.g. `us-west-004` |
-| `CDN_BASE_URL` | CDN hostname in front of the bucket, e.g. `https://cdn.prunto.dev` |
+| `CDN_BASE_URL` | CDN hostname in front of the bucket, e.g. `https://cdn-prunto.igorkasyanchuk.com` |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | Gate `/admin`. Either unset means closed |
 | `TRUST_PROXY` | `cloudflare` when `CF-Connecting-IP` is authoritative, otherwise `none` |
 
@@ -177,7 +177,7 @@ instance can install it without cloning this repo:
 
 ```bash
 mkdir -p ~/.claude/skills/prunto-screenshot
-curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md https://prunto.example/prunto-screenshot/SKILL.md
+curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md https://prunto.igorkasyanchuk.com/prunto-screenshot/SKILL.md
 export PRUNTO_API_TOKEN=your-token
 ```
 
