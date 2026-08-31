@@ -27,7 +27,7 @@ is that re-encoding relocates decoder risk from a sandboxed browser to an unsand
 process holding credentials, and creates the decompression bomb it then has to defend against.
 
 That single decision is what makes the rest possible: `CGO_ENABLED=0`, a `FROM scratch` image,
-and 15 MB instead of roughly 400.
+and a 20 MB image instead of roughly 400.
 
 **A boot-time CDN probe replaces what re-encoding was buying.** Re-encoding is protection that
 survives a misconfigured deployment. So is refusing to start when the CDN is not serving

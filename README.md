@@ -7,7 +7,7 @@ GitHub has no API for attaching an image to a PR description, so an agent that j
 screenshot has nowhere to put it. This is that somewhere.
 
 A Go port of [priito](https://github.com/igorkasyanchuk/priito) (Rails 8). Same product, same
-threat model, two dependencies and a 15 MB image. See [PORTING.md](PORTING.md) for what changed
+threat model, two dependencies and a 20 MB image. See [PORTING.md](PORTING.md) for what changed
 and what got worse.
 
 ## Run it
