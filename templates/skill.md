@@ -29,10 +29,11 @@ This skill does not capture anything. Use whatever is already available:
 Needs a token for {{.BaseURL}}, the instance this skill was downloaded from, in the
 environment: `PRUNTO_API_TOKEN` if it is set, `PRUNTO_TOKEN` otherwise (the pre-rename
 `PRIITO_API_TOKEN` and `PRIITO_TOKEN` still work). Every command below reads all four. If
-none is set, ask the user for a token rather than guessing.
+none is set, ask the user for a token rather than guessing. If only a `PRIITO_*` variable
+is set, suggest the user rename it to the `PRUNTO_*` form — the old names are deprecated.
 
 ```bash
-curl -sf -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-${PRUNTO_TOKEN:-${PRIITO_API_TOKEN:-$PRIITO_TOKEN}}}" -F "file=@PATH" \
+curl -sf -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-${PRUNTO_TOKEN:-${PRIITO_API_TOKEN:-${PRIITO_TOKEN:-}}}}" -F "file=@PATH" \
   "{{.BaseURL}}/api/v1/uploads"
 ```
 
@@ -56,7 +57,7 @@ Take `.markdown` for a PR body. Keep `.delete_url` in your reply so the user can
 file early:
 
 ```bash
-curl -X DELETE -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-${PRUNTO_TOKEN:-${PRIITO_API_TOKEN:-$PRIITO_TOKEN}}}" "DELETE_URL"
+curl -X DELETE -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-${PRUNTO_TOKEN:-${PRIITO_API_TOKEN:-${PRIITO_TOKEN:-}}}}" "DELETE_URL"
 ```
 
 Limits: {{.MaxMB}} MB per file; **PNG, JPEG, GIF, WebP, MP4 and WebM only** - no PDF, no SVG,
@@ -111,4 +112,5 @@ curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md {{.SkillURL}}
 
 That is every project. For one repo, save it under `.claude/skills/prunto-screenshot/SKILL.md`
 instead. Either way, export `PRUNTO_API_TOKEN` (or `PRUNTO_TOKEN`) with a token for
-{{.BaseURL}}.
+{{.BaseURL}}. If a pre-rename install exists at `~/.claude/skills/priito-screenshot/`,
+delete that directory — two copies of this skill would collide.

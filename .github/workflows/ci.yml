@@ -12,9 +12,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          # "stable" tracks the newest Go release: govulncheck fails the build on stdlib
-          # vulns fixed only in newer patch releases, so a pinned version rots into red CI.
-          go-version: "stable"
+          # Tracks go.mod's declared line at its newest patch: govulncheck fails the build
+          # on stdlib vulns fixed in patch releases, so a hard-pinned version rots into red
+          # CI. If it reddens with a fix only in a newer minor, the line is EOL - bump
+          # go.mod and the Dockerfile together.
+          go-version-file: go.mod
       - run: go vet ./...
       - run: go test -race ./...
       - name: govulncheck

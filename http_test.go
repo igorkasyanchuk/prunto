@@ -335,6 +335,50 @@ func TestRenameCompatShims(t *testing.T) {
 	if b, err := os.ReadFile(cfg.DBPath()); err != nil || string(b) != "not empty" {
 		t.Errorf("prunto.db = %q, %v; want the adopted file", b, err)
 	}
+
+	// A schema-only prunto.db — what the shimless rename release created on boot — must be
+	// moved aside and adopted over, not treated as the database.
+	if err := os.Remove(cfg.DBPath()); err != nil {
+		t.Fatal(err)
+	}
+	db, err := OpenDB(cfg.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if err := os.WriteFile(old, []byte("old data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	adoptRenamedDB(cfg, log.New(io.Discard, "", 0))
+	if b, _ := os.ReadFile(cfg.DBPath()); string(b) != "old data" {
+		t.Error("an empty prunto.db was not adopted over")
+	}
+	if _, err := os.Stat(cfg.DBPath() + ".empty"); err != nil {
+		t.Error("the empty prunto.db was not preserved aside")
+	}
+
+	// A prunto.db with data wins; priito.db is left in place for the operator.
+	if err := os.Remove(cfg.DBPath()); err != nil {
+		t.Fatal(err)
+	}
+	db, err = OpenDB(cfg.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MintToken(context.Background(), db, "keep"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if err := os.WriteFile(old, []byte("older"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	adoptRenamedDB(cfg, log.New(io.Discard, "", 0))
+	if _, err := os.Stat(old); err != nil {
+		t.Error("a populated prunto.db must leave priito.db in place")
+	}
+	if !dbHasData(cfg.DBPath()) {
+		t.Error("the populated prunto.db was replaced")
+	}
 }
 
 func TestPurgeRemovesExpiredUploads(t *testing.T) {

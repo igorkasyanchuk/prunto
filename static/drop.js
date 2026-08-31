@@ -8,11 +8,10 @@
   let deleteURL = null;
 
   // ponytail: migrate the pre-rename localStorage key; delete once priito_token is history.
+  // === null, not truthiness: an empty prunto_token is a cleared field, not an absent one.
   const legacyToken = localStorage.getItem("priito_token");
-  if (legacyToken !== null) {
-    if (!localStorage.getItem("prunto_token")) localStorage.setItem("prunto_token", legacyToken);
-    localStorage.removeItem("priito_token");
-  }
+  if (legacyToken !== null && localStorage.getItem("prunto_token") === null) localStorage.setItem("prunto_token", legacyToken);
+  localStorage.removeItem("priito_token");
   token.value = localStorage.getItem("prunto_token") || "";
   token.addEventListener("input", () => localStorage.setItem("prunto_token", token.value.trim()));
 

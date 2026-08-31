@@ -25,6 +25,11 @@ type App struct {
 func main() {
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 
+	// Before LoadConfig so the warning also lands when the old variable's value fails
+	// validation - the error below names only PRUNTO_BASE_URL.
+	if os.Getenv("PRIITO_BASE_URL") != "" && os.Getenv("PRUNTO_BASE_URL") == "" {
+		logger.Printf("PRIITO_BASE_URL is deprecated and will stop working: set PRUNTO_BASE_URL")
+	}
 	cfg, err := LoadConfig()
 	if err != nil {
 		logger.Fatalf("configuration: %v", err)
@@ -105,21 +110,57 @@ func main() {
 // adoptRenamedDB picks up a database written before the rename to prunto. Without it an
 // upgraded deployment boots against a fresh empty prunto.db while every token digest and
 // upload row sits in the abandoned priito.db — silently, since SQLite creates on open.
+// A prunto.db that already exists but holds no data is moved aside and adopted over: the
+// shimless rename release created exactly such empty files on every boot, and skipping
+// them would strand the very fleet this shim exists for. A prunto.db with data wins, with
+// a log line so the operator knows priito.db was left behind.
 // ponytail: one-release shim, delete once pre-rename deployments are gone.
 func adoptRenamedDB(cfg Config, logger *log.Logger) {
-	if _, err := os.Stat(cfg.DBPath()); !os.IsNotExist(err) {
+	old := filepath.Join(cfg.DataDir, "priito.db")
+	if _, err := os.Stat(old); err != nil {
 		return
 	}
-	for _, ext := range []string{"", "-shm", "-wal"} {
-		old := filepath.Join(cfg.DataDir, "priito.db"+ext)
-		if _, err := os.Stat(old); err != nil {
+	if _, err := os.Stat(cfg.DBPath()); err == nil {
+		if dbHasData(cfg.DBPath()) {
+			logger.Printf("both %s and %s exist; keeping %s (move %s away by hand)",
+				old, cfg.DBPath(), cfg.DBPath(), old)
+			return
+		}
+		for _, ext := range []string{"-shm", "-wal", ""} {
+			if _, err := os.Stat(cfg.DBPath() + ext); err != nil {
+				continue
+			}
+			if err := os.Rename(cfg.DBPath()+ext, cfg.DBPath()+ext+".empty"); err != nil {
+				logger.Fatalf("moving empty database aside: %v", err)
+			}
+		}
+	}
+	// Sidecars first, main file last: the main file is the adoption's commit point, so a
+	// crash mid-way resumes on the next boot instead of stranding the WAL.
+	for _, ext := range []string{"-shm", "-wal", ""} {
+		o := old + ext
+		if _, err := os.Stat(o); err != nil {
 			continue
 		}
-		if err := os.Rename(old, cfg.DBPath()+ext); err != nil {
-			logger.Fatalf("adopting pre-rename database %s: %v", old, err)
+		if err := os.Rename(o, cfg.DBPath()+ext); err != nil {
+			logger.Fatalf("adopting pre-rename database %s: %v", o, err)
 		}
-		logger.Printf("adopted pre-rename database file %s as %s", old, cfg.DBPath()+ext)
+		logger.Printf("adopted pre-rename database file %s as %s", o, cfg.DBPath()+ext)
 	}
+}
+
+// dbHasData reports whether the SQLite file at path holds any rows worth keeping. A file
+// that cannot be opened or queried counts as empty — it is moved aside, never deleted.
+func dbHasData(path string) bool {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+	var n int
+	err = db.QueryRow(`SELECT (SELECT COUNT(*) FROM api_tokens) + (SELECT COUNT(*) FROM uploads)
+		+ (SELECT COUNT(*) FROM abuse_reports)`).Scan(&n)
+	return err == nil && n > 0
 }
 
 func runCommand(app *App, args []string) error {
@@ -157,7 +198,16 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /abuse_reports", a.handleCreateAbuseReport)
 	mux.HandleFunc("GET /admin", a.guard(a.handleAdmin))
 	mux.HandleFunc("POST /admin/actions", a.guard(a.handleAdminAction))
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
+	// No directory listings: FileServer's autoindex is the one HTML page the app would serve
+	// without a lang attribute or a title, and there is nothing to browse anyway.
+	static := http.StripPrefix("/static/", http.FileServerFS(staticFS))
+	mux.Handle("GET /static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		static.ServeHTTP(w, r)
+	}))
 
 	mux.HandleFunc("GET /up", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
