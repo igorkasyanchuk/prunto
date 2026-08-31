@@ -18,7 +18,7 @@ func newTestApp(t *testing.T) *App {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("DATA_DIR", dir)
-	t.Setenv("PRIITO_BASE_URL", "http://priito.test")
+	t.Setenv("PRUNTO_BASE_URL", "http://prunto.test")
 	t.Setenv("ADMIN_USER", "admin")
 	t.Setenv("ADMIN_PASSWORD", "hunter2")
 
@@ -53,7 +53,7 @@ func uploadRequest(t *testing.T, body []byte, filename, token string, fields map
 	part.Write(body)
 	mw.Close()
 
-	r := httptest.NewRequest(http.MethodPost, "http://priito.test/api/v1/uploads", &buf)
+	r := httptest.NewRequest(http.MethodPost, "http://prunto.test/api/v1/uploads", &buf)
 	r.Header.Set("Content-Type", mw.FormDataContentType())
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
@@ -198,7 +198,7 @@ func TestAdminIsClosedWhenUnconfigured(t *testing.T) {
 	app.Config.AdminUser, app.Config.AdminPassword = "", ""
 
 	w := httptest.NewRecorder()
-	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://priito.test/admin", nil))
+	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil))
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403 - an unconfigured admin is closed, not open", w.Code)
 	}
@@ -211,11 +211,11 @@ func TestAdminAuthAndOrigin(t *testing.T) {
 	do := func(method, origin string, auth bool) int {
 		var r *http.Request
 		if method == http.MethodPost {
-			r = httptest.NewRequest(method, "http://priito.test/admin/actions",
+			r = httptest.NewRequest(method, "http://prunto.test/admin/actions",
 				strings.NewReader("do=handle&id=1"))
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		} else {
-			r = httptest.NewRequest(method, "http://priito.test/admin", nil)
+			r = httptest.NewRequest(method, "http://prunto.test/admin", nil)
 		}
 		if origin != "" {
 			r.Header.Set("Origin", origin)
@@ -239,7 +239,7 @@ func TestAdminAuthAndOrigin(t *testing.T) {
 	if got := do(http.MethodPost, "http://evil.test", true); got != http.StatusForbidden {
 		t.Errorf("cross-origin POST = %d, want 403", got)
 	}
-	if got := do(http.MethodPost, "http://priito.test", true); got != http.StatusSeeOther {
+	if got := do(http.MethodPost, "http://prunto.test", true); got != http.StatusSeeOther {
 		t.Errorf("same-origin POST = %d, want 303", got)
 	}
 }
@@ -271,7 +271,7 @@ func TestRefusesForgedForwardedFor(t *testing.T) {
 func TestResponsesCarryTheSecurityHeaders(t *testing.T) {
 	app := newTestApp(t)
 	w := httptest.NewRecorder()
-	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://priito.test/", nil))
+	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/", nil))
 
 	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Errorf("X-Content-Type-Options = %q", got)
@@ -285,13 +285,13 @@ func TestSkillIsRenderedWithThisInstancesHost(t *testing.T) {
 	app := newTestApp(t)
 	w := httptest.NewRecorder()
 	app.Routes().ServeHTTP(w,
-		httptest.NewRequest(http.MethodGet, "http://priito.test/priito-screenshot/SKILL.md", nil))
+		httptest.NewRequest(http.MethodGet, "http://prunto.test/prunto-screenshot/SKILL.md", nil))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "http://priito.test/api/v1/uploads") {
+	if !strings.Contains(body, "http://prunto.test/api/v1/uploads") {
 		t.Error("the skill does not point at this instance")
 	}
 	// text/template, not html/template: HTML-escaping would mangle every code fence.
@@ -353,7 +353,7 @@ func TestAdminLoadsWithAnOpenReport(t *testing.T) {
 
 	done := make(chan int, 1)
 	go func() {
-		r := httptest.NewRequest(http.MethodGet, "http://priito.test/admin", nil)
+		r := httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
 		r.SetBasicAuth("admin", "hunter2")
 		rec := httptest.NewRecorder()
 		app.Routes().ServeHTTP(rec, r)
@@ -406,7 +406,7 @@ func TestDropPageCSPNamesTheCDNOrigin(t *testing.T) {
 	app.Config.CDNBaseURL = "https://cdn.example.test/blobs"
 
 	w := httptest.NewRecorder()
-	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://priito.test/", nil))
+	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/", nil))
 
 	csp := w.Header().Get("Content-Security-Policy")
 	for _, want := range []string{
@@ -429,7 +429,7 @@ func TestMintedTokenIsNeverInTheURL(t *testing.T) {
 	handler := app.Routes()
 
 	form := strings.NewReader("do=mint&label=laptop")
-	r := httptest.NewRequest(http.MethodPost, "http://priito.test/admin/actions", form)
+	r := httptest.NewRequest(http.MethodPost, "http://prunto.test/admin/actions", form)
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Origin", app.Config.BaseURL)
 	r.SetBasicAuth("admin", "hunter2")
@@ -457,7 +457,7 @@ func TestMintedTokenIsNeverInTheURL(t *testing.T) {
 	}
 
 	// Shown once: the dashboard renders it and clears the cookie in the same response.
-	r = httptest.NewRequest(http.MethodGet, "http://priito.test/admin", nil)
+	r = httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
 	r.AddCookie(minted)
 	r.SetBasicAuth("admin", "hunter2")
 	w = httptest.NewRecorder()
@@ -473,29 +473,29 @@ func TestMintedTokenIsNeverInTheURL(t *testing.T) {
 	}
 }
 
-// PRIITO_BASE_URL is compared against an Origin header and used to derive the CSP's CDN source,
+// PRUNTO_BASE_URL is compared against an Origin header and used to derive the CSP's CDN source,
 // so a value that is not a bare origin has to stop the boot rather than silently disable both.
 func TestBaseURLMustBeABareOrigin(t *testing.T) {
 	notOrigins := []string{
-		"priito.test", "https://priito.test/sub", "ftp://priito.test", "https://",
-		"https://priito.test?v=2", "https://priito.test#x", "https://user@priito.test",
+		"prunto.test", "https://prunto.test/sub", "ftp://prunto.test", "https://",
+		"https://prunto.test?v=2", "https://prunto.test#x", "https://user@prunto.test",
 	}
 	for _, bad := range notOrigins {
 		t.Run(bad, func(t *testing.T) {
 			t.Setenv("DATA_DIR", t.TempDir())
-			t.Setenv("PRIITO_BASE_URL", bad)
+			t.Setenv("PRUNTO_BASE_URL", bad)
 			if _, err := LoadConfig(); err == nil {
 				t.Fatalf("LoadConfig accepted %q", bad)
 			}
 		})
 	}
 	t.Setenv("DATA_DIR", t.TempDir())
-	t.Setenv("PRIITO_BASE_URL", "https://priito.test/")
+	t.Setenv("PRUNTO_BASE_URL", "https://prunto.test/")
 	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.CDNOrigin() != "https://priito.test" {
+	if cfg.CDNOrigin() != "https://prunto.test" {
 		t.Fatalf("CDNOrigin = %q", cfg.CDNOrigin())
 	}
 }

@@ -7,8 +7,8 @@
   const markdown = $("markdown"), expiry = $("expiry"), error = $("error");
   let deleteURL = null;
 
-  token.value = localStorage.getItem("priito_token") || "";
-  token.addEventListener("input", () => localStorage.setItem("priito_token", token.value.trim()));
+  token.value = localStorage.getItem("prunto_token") || "";
+  token.addEventListener("input", () => localStorage.setItem("prunto_token", token.value.trim()));
 
   const fail = (message) => { error.textContent = message; error.hidden = false; hint.textContent = "Drop a file here, paste, or click to choose one"; };
 

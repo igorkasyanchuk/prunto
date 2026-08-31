@@ -116,7 +116,7 @@ var probePNG = []byte{
 // the control. A wrong header is a misconfiguration and stops the boot; a failed request is
 // probably the network and only warns.
 func VerifyCDNHeaders(ctx context.Context, store Store) error {
-	const key = ".priito-header-probe.png"
+	const key = ".prunto-header-probe.png"
 
 	if err := store.Put(ctx, key, probePNG, "image/png"); err != nil {
 		log.Printf("WARNING: could not write the CDN header probe: %v", err)

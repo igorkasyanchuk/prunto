@@ -1,12 +1,12 @@
 ---
-name: priito-screenshot
-description: Upload a local image, GIF or short video to priito and embed the returned public URL in a GitHub pull request body. Use when asked to attach a screenshot, recording, or diagram to a PR, to open a PR with a screenshot in it, or to get a shareable public link for a local image file. Does not capture the screenshot itself - it takes a file path you already have.
+name: prunto-screenshot
+description: Upload a local image, GIF or short video to prunto and embed the returned public URL in a GitHub pull request body. Use when asked to attach a screenshot, recording, or diagram to a PR, to open a PR with a screenshot in it, or to get a shareable public link for a local image file. Does not capture the screenshot itself - it takes a file path you already have.
 ---
 
-# priito-screenshot
+# prunto-screenshot
 
 GitHub has no API for attaching an image to a PR description. This skill closes that gap:
-upload the file to priito, get back a public URL, paste the markdown into the PR body.
+upload the file to prunto, get back a public URL, paste the markdown into the PR body.
 
 ## Before you upload
 
@@ -27,11 +27,11 @@ This skill does not capture anything. Use whatever is already available:
 ## Uploading
 
 Needs a token for {{.BaseURL}}, the instance this skill was downloaded from, in the
-environment: `PRIITO_API_TOKEN` if it is set, `PRIITO_TOKEN` otherwise. Every command below
+environment: `PRUNTO_API_TOKEN` if it is set, `PRUNTO_TOKEN` otherwise. Every command below
 reads both. If neither is set, ask the user for a token rather than guessing.
 
 ```bash
-curl -sf -H "Authorization: Bearer ${PRIITO_API_TOKEN:-$PRIITO_TOKEN}" -F "file=@PATH" \
+curl -sf -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-$PRUNTO_TOKEN}" -F "file=@PATH" \
   "{{.BaseURL}}/api/v1/uploads"
 ```
 
@@ -55,7 +55,7 @@ Take `.markdown` for a PR body. Keep `.delete_url` in your reply so the user can
 file early:
 
 ```bash
-curl -X DELETE -H "Authorization: Bearer ${PRIITO_API_TOKEN:-$PRIITO_TOKEN}" "DELETE_URL"
+curl -X DELETE -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-$PRUNTO_TOKEN}" "DELETE_URL"
 ```
 
 Limits: {{.MaxMB}} MB per file; **PNG, JPEG, GIF, WebP, MP4 and WebM only** - no PDF, no SVG,
@@ -104,10 +104,10 @@ autoplays, which is the better choice for anything short.
 ## Installing
 
 ```bash
-mkdir -p ~/.claude/skills/priito-screenshot
-curl -sfo ~/.claude/skills/priito-screenshot/SKILL.md {{.SkillURL}}
+mkdir -p ~/.claude/skills/prunto-screenshot
+curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md {{.SkillURL}}
 ```
 
-That is every project. For one repo, save it under `.claude/skills/priito-screenshot/SKILL.md`
-instead. Either way, export `PRIITO_API_TOKEN` (or `PRIITO_TOKEN`) with a token for
+That is every project. For one repo, save it under `.claude/skills/prunto-screenshot/SKILL.md`
+instead. Either way, export `PRUNTO_API_TOKEN` (or `PRUNTO_TOKEN`) with a token for
 {{.BaseURL}}.

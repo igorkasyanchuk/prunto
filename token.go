@@ -11,7 +11,7 @@ import (
 )
 
 // TokenPrefix makes a leaked token recognisable in a log or a paste.
-const TokenPrefix = "priito_"
+const TokenPrefix = "prunto_"
 
 type APIToken struct {
 	ID         int64

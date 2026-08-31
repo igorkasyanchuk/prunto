@@ -1,4 +1,4 @@
-module github.com/igorkasyanchuk/priito-go
+module github.com/igorkasyanchuk/prunto
 
 go 1.24
 

@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>priito</title>
+<title>prunto</title>
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 <main class="wrap" id="app" data-accept="{{.Accept}}">
-  <h1>priito</h1>
+  <h1>prunto</h1>
   <p class="lede">
     Drop a screenshot, get a public URL you can paste straight into a pull request.
     Uploads are deleted after {{.Retention}}.
@@ -23,8 +23,8 @@
 
   <label class="token">
     API token
-    <input type="password" id="token" placeholder="priito_..." autocomplete="off" spellcheck="false">
-    <small>Kept in this browser only. Mint one with <code>priito token "my laptop"</code>.</small>
+    <input type="password" id="token" placeholder="prunto_..." autocomplete="off" spellcheck="false">
+    <small>Kept in this browser only. Mint one with <code>prunto token "my laptop"</code>.</small>
   </label>
 
   <label class="drop" id="drop">
@@ -53,14 +53,14 @@
       Teaches Claude to upload a screenshot here and paste it into a pull request. Installs for
       every project; drop the <code>~</code> for one repo.
     </p>
-<pre><code>mkdir -p ~/.claude/skills/priito-screenshot
-curl -sfo ~/.claude/skills/priito-screenshot/SKILL.md \
+<pre><code>mkdir -p ~/.claude/skills/prunto-screenshot
+curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md \
   {{.SkillURL}}
-export PRIITO_API_TOKEN=your-token</code></pre>
+export PRUNTO_API_TOKEN=your-token</code></pre>
   </section>
 
   <p class="limits">
-    <a href="/priito-screenshot/SKILL.md">Read the skill</a> &middot;
+    <a href="/prunto-screenshot/SKILL.md">Read the skill</a> &middot;
     <a href="/abuse_reports/new">Report content</a>
   </p>
 </main>

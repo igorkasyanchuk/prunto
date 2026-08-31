@@ -40,7 +40,7 @@ func main() {
 	}
 	app := &App{Config: cfg, DB: db, Store: store, Log: logger}
 
-	// Subcommands. `priito token "my laptop"` is the whole administrative surface that has to
+	// Subcommands. `prunto token "my laptop"` is the whole administrative surface that has to
 	// exist before the first upload.
 	if len(os.Args) > 1 && os.Args[1] != "serve" {
 		if err := runCommand(app, os.Args[1:]); err != nil {
@@ -93,7 +93,7 @@ func main() {
 		}
 	}()
 
-	logger.Printf("priito listening on %s, serving %s", cfg.Addr, cfg.BaseURL)
+	logger.Printf("prunto listening on %s, serving %s", cfg.Addr, cfg.BaseURL)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func runCommand(app *App, args []string) error {
 	switch args[0] {
 	case "token":
 		if len(args) < 2 {
-			return fmt.Errorf(`usage: priito token "label"`)
+			return fmt.Errorf(`usage: prunto token "label"`)
 		}
 		raw, err := MintToken(context.Background(), app.DB, strings.Join(args[1:], " "))
 		if err != nil {
@@ -127,7 +127,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /{$}", a.handleDropPage)
 	mux.HandleFunc("POST /api/v1/uploads", a.handleCreateUpload)
 	mux.HandleFunc("DELETE /api/v1/uploads/{deleteToken}", a.handleDeleteUpload)
-	mux.HandleFunc("GET /priito-screenshot/SKILL.md", a.handleSkill)
+	mux.HandleFunc("GET /prunto-screenshot/SKILL.md", a.handleSkill)
 	mux.HandleFunc("GET /abuse_reports/new", a.handleNewAbuseReport)
 	mux.HandleFunc("POST /abuse_reports", a.handleCreateAbuseReport)
 	mux.HandleFunc("GET /admin", a.guard(a.handleAdmin))

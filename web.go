@@ -45,7 +45,7 @@ func (a *App) view() map[string]any {
 	return map[string]any{
 		"BaseURL":    a.Config.BaseURL,
 		"CDNBaseURL": a.Config.CDNBaseURL,
-		"SkillURL":   a.Config.BaseURL + "/priito-screenshot/SKILL.md",
+		"SkillURL":   a.Config.BaseURL + "/prunto-screenshot/SKILL.md",
 		"Retention":  humanDuration(DefaultRetention),
 		"MaxMB":      MaxBytes >> 20,
 		"Accept":     acceptAttribute(),

@@ -54,7 +54,7 @@ func LoadConfig() (Config, error) {
 	c := Config{
 		Addr:          ":" + env("PORT", "3000"),
 		DataDir:       env("DATA_DIR", "./data"),
-		BaseURL:       strings.TrimSuffix(env("PRIITO_BASE_URL", ""), "/"),
+		BaseURL:       strings.TrimSuffix(env("PRUNTO_BASE_URL", ""), "/"),
 		Bucket:        env("B2_BUCKET", ""),
 		KeyID:         env("B2_KEY_ID", ""),
 		AppKey:        env("B2_APPLICATION_KEY", ""),
@@ -86,7 +86,7 @@ func LoadConfig() (Config, error) {
 		if c.Local() {
 			c.BaseURL = "http://localhost" + c.Addr
 		} else {
-			return c, fmt.Errorf("PRIITO_BASE_URL is required: it is the public origin this instance hands out in delete URLs and in the skill")
+			return c, fmt.Errorf("PRUNTO_BASE_URL is required: it is the public origin this instance hands out in delete URLs and in the skill")
 		}
 	}
 
@@ -98,7 +98,7 @@ func LoadConfig() (Config, error) {
 	u, err := url.Parse(c.BaseURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
 		u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
-		return c, fmt.Errorf("PRIITO_BASE_URL must be a bare origin such as https://priito.example.com, got %q", c.BaseURL)
+		return c, fmt.Errorf("PRUNTO_BASE_URL must be a bare origin such as https://prunto.example.com, got %q", c.BaseURL)
 	}
 
 	if c.Local() {
@@ -116,7 +116,7 @@ func (c Config) Local() bool { return c.Bucket == "" }
 // not open.
 func (c Config) AdminEnabled() bool { return c.AdminUser != "" && c.AdminPassword != "" }
 
-func (c Config) DBPath() string { return filepath.Join(c.DataDir, "priito.db") }
+func (c Config) DBPath() string { return filepath.Join(c.DataDir, "prunto.db") }
 
 // CDNOrigin is the scheme://host blobs are served from, with no path. The drop page previews an
 // upload straight off it, so the page's CSP has to name the origin or the browser blocks the

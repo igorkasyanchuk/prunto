@@ -1,4 +1,4 @@
-# priito-go
+# prunto
 
 Image host for pull-request screenshots. Drop a file, get a public URL, paste `![](url)` into
 a PR body. Files delete themselves after 14 days.
@@ -13,7 +13,7 @@ and what got worse.
 ## Run it
 
 ```bash
-docker run -p 3000:3000 -v priito:/data ghcr.io/igorkasyanchuk/priito-go
+docker run -p 3000:3000 -v prunto:/data ghcr.io/igorkasyanchuk/prunto
 ```
 
 That is the whole thing. No Postgres, no Redis, no object store, no account anywhere: SQLite
@@ -26,7 +26,7 @@ service and working on it. For real pull requests, point it at a bucket behind a
 Mint a token before the first upload:
 
 ```bash
-docker exec -it <container> /priito token "my laptop"
+docker exec -it <container> /prunto token "my laptop"
 ```
 
 ## Stack
@@ -59,11 +59,11 @@ test suite never touches the network.
 ## API
 
 ```bash
-curl -H "Authorization: Bearer $PRIITO_TOKEN" -F "file=@shot.png" \
-  https://priito.example/api/v1/uploads
+curl -H "Authorization: Bearer $PRUNTO_TOKEN" -F "file=@shot.png" \
+  https://prunto.example/api/v1/uploads
 
-curl -X DELETE -H "Authorization: Bearer $PRIITO_TOKEN" \
-  https://priito.example/api/v1/uploads/DELETE_TOKEN
+curl -X DELETE -H "Authorization: Bearer $PRUNTO_TOKEN" \
+  https://prunto.example/api/v1/uploads/DELETE_TOKEN
 ```
 
 `POST /api/v1/uploads` → 201 with `url`, `markdown`, `content_type`, `delete_url`, `expires_at`
@@ -81,7 +81,7 @@ host is the highest-abuse-risk shape there is, and it buys nothing here, since a
 environment variable for a CLI.
 
 ```bash
-priito token "my laptop"   # prints the token once
+prunto token "my laptop"   # prints the token once
 ```
 
 Only the SHA-256 digest is stored, so a lost token cannot be recovered — mint another. Revoke
@@ -150,12 +150,12 @@ that would change.
 | --- | --- |
 | `PORT` | Listen port, default 3000 |
 | `DATA_DIR` | SQLite file and, with no bucket, the blobs. Default `./data` |
-| `PRIITO_BASE_URL` | This instance's public origin. Required with a bucket configured |
+| `PRUNTO_BASE_URL` | This instance's public origin. Required with a bucket configured |
 | `B2_BUCKET` | Bucket name |
 | `B2_KEY_ID` / `B2_APPLICATION_KEY` | Application key with read+write on that bucket |
 | `B2_ENDPOINT` | e.g. `https://s3.us-west-004.backblazeb2.com` |
 | `B2_REGION` | e.g. `us-west-004` |
-| `CDN_BASE_URL` | CDN hostname in front of the bucket, e.g. `https://cdn.priito.dev` |
+| `CDN_BASE_URL` | CDN hostname in front of the bucket, e.g. `https://cdn.prunto.dev` |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | Gate `/admin`. Either unset means closed |
 | `TRUST_PROXY` | `cloudflare` when `CF-Connecting-IP` is authoritative, otherwise `none` |
 
@@ -172,13 +172,13 @@ and the production checklist that has to be done before the instance is public.
 
 ## Claude Code skill
 
-Served at `/priito-screenshot/SKILL.md` and linked from the drop page, so anyone using an
+Served at `/prunto-screenshot/SKILL.md` and linked from the drop page, so anyone using an
 instance can install it without cloning this repo:
 
 ```bash
-mkdir -p ~/.claude/skills/priito-screenshot
-curl -sfo ~/.claude/skills/priito-screenshot/SKILL.md https://priito.example/priito-screenshot/SKILL.md
-export PRIITO_API_TOKEN=your-token
+mkdir -p ~/.claude/skills/prunto-screenshot
+curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md https://prunto.example/prunto-screenshot/SKILL.md
+export PRUNTO_API_TOKEN=your-token
 ```
 
 It is rendered rather than static because every URL in it — the API endpoint, the CDN, the

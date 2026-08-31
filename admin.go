@@ -32,7 +32,7 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 		userOK := subtle.ConstantTimeCompare([]byte(user), []byte(a.Config.AdminUser)) == 1
 		passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(a.Config.AdminPassword)) == 1
 		if !ok || !userOK || !passOK {
-			w.Header().Set("WWW-Authenticate", `Basic realm="priito"`)
+			w.Header().Set("WWW-Authenticate", `Basic realm="prunto"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -170,7 +170,7 @@ func (a *App) handleAdminAction(w http.ResponseWriter, r *http.Request) {
 // Not the query string: a token in a URL lands in browser history and in the access log of
 // every proxy in front of this origin, which is precisely what the API refuses a request over
 // (see ErrTokenInQuery). The cookie is read once and cleared on the render that shows it.
-const mintedCookie = "priito_minted"
+const mintedCookie = "prunto_minted"
 
 func (a *App) takeMintedToken(w http.ResponseWriter, r *http.Request) string {
 	c, err := r.Cookie(mintedCookie)

@@ -1,4 +1,4 @@
-# Deploying priito-go on Coolify
+# Deploying prunto on Coolify
 
 Two paths. Start with the first to see it running in five minutes, then do the second before
 anyone else can reach it.
@@ -19,7 +19,7 @@ repo's URL. Build Pack: **Dockerfile**. Coolify finds the `Dockerfile` at the ro
 
 | | |
 | --- | --- |
-| Name | `priito-data` |
+| Name | `prunto-data` |
 | Destination Path | `/data` |
 
 Without this, every redeploy wipes the database and every uploaded file with it.
@@ -27,20 +27,20 @@ Without this, every redeploy wipes the database and every uploaded file with it.
 **Set the environment.**
 
 ```
-PRIITO_BASE_URL=https://<the domain Coolify gave you>
+PRUNTO_BASE_URL=https://<the domain Coolify gave you>
 ADMIN_USER=admin
 ADMIN_PASSWORD=<something long>
 TRUST_PROXY=none
 ```
 
-`PRIITO_BASE_URL` has to match the domain exactly, scheme included and no trailing slash. It is
+`PRUNTO_BASE_URL` has to match the domain exactly, scheme included and no trailing slash. It is
 what the app hands out in delete URLs and in the skill, and it is what the admin `Origin` check
 compares against — get it wrong and every admin action returns 403.
 
 **Deploy.** Then mint a token. Coolify → the resource → **Terminal**:
 
 ```bash
-/priito token "my laptop"
+/prunto token "my laptop"
 ```
 
 Open the domain, paste the token into the drop page, drop a screenshot. Done.
@@ -67,8 +67,8 @@ app's. This part is not optional if the instance is public.
 
 1. Add a CNAME for `cdn.yourdomain.com` pointing at the B2 endpoint host, proxied (orange
    cloud). B2 is in Cloudflare's Bandwidth Alliance, so egress through this path is free.
-2. **Serve the CDN from a different domain than the app.** `cdn.priito.dev`, never
-   `priito.dev/files/...`. Uploads are attacker-controlled bytes, and a file on the app's own
+2. **Serve the CDN from a different domain than the app.** `cdn.prunto.dev`, never
+   `prunto.dev/files/...`. Uploads are attacker-controlled bytes, and a file on the app's own
    origin that a browser decides to treat as HTML is stored XSS against the app's own cookies.
 
 ### Response headers (Transform Rule)
@@ -98,7 +98,7 @@ cache.
 ### Environment
 
 ```
-PRIITO_BASE_URL=https://priito.yourdomain.com
+PRUNTO_BASE_URL=https://prunto.yourdomain.com
 B2_BUCKET=your-bucket
 B2_KEY_ID=...
 B2_APPLICATION_KEY=...
