@@ -1,0 +1,34 @@
+{{define "abuse.html"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report content &middot; priito</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<main class="wrap">
+  <h1>Report content</h1>
+  {{if .Submitted}}
+    <p class="lede">Thank you. The report has been recorded and will be reviewed.</p>
+    <p class="limits"><a href="/">Back</a></p>
+  {{else}}
+    <p class="lede">
+      No account needed. Paste the URL of the file and say what is wrong with it.
+    </p>
+    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    <form method="post" action="/abuse_reports">
+      <label class="token">
+        URL of the file
+        <input type="url" name="url" required placeholder="{{.CDNBaseURL}}/AbC123.png">
+      </label>
+      <label class="token">
+        What is wrong with it
+        <textarea name="reason" required rows="5" maxlength="2000"></textarea>
+      </label>
+      <div class="row"><button type="submit">Send report</button></div>
+    </form>
+  {{end}}
+</main>
+</body>
+</html>{{end}}

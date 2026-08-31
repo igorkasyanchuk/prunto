@@ -1,0 +1,329 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"log"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func newTestApp(t *testing.T) *App {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("DATA_DIR", dir)
+	t.Setenv("PRIITO_BASE_URL", "http://priito.test")
+	t.Setenv("ADMIN_USER", "admin")
+	t.Setenv("ADMIN_PASSWORD", "hunter2")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := OpenDB(cfg.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	store, err := NewStore(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &App{Config: cfg, DB: db, Store: store, Log: log.New(io.Discard, "", 0)}
+}
+
+func uploadRequest(t *testing.T, body []byte, filename, token string, fields map[string]string) *http.Request {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		mw.WriteField(k, v)
+	}
+	part, err := mw.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write(body)
+	mw.Close()
+
+	r := httptest.NewRequest(http.MethodPost, "http://priito.test/api/v1/uploads", &buf)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	if token != "" {
+		r.Header.Set("Authorization", "Bearer "+token)
+	}
+	return r
+}
+
+func TestUploadRoundTrip(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+	token, err := MintToken(context.Background(), app.DB, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The filename claims PNG; the bytes are a GIF. The bytes decide.
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, uploadRequest(t, sampleGIF(t, 2), "screenshot.png", token, nil))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	url, _ := payload["url"].(string)
+	if !strings.HasSuffix(url, ".gif") {
+		t.Errorf("url = %q, want a .gif extension taken from the bytes", url)
+	}
+	if md, _ := payload["markdown"].(string); md != "!["+"]("+url+")" {
+		t.Errorf("markdown = %q", md)
+	}
+
+	deleteURL, _ := payload["delete_url"].(string)
+	if deleteURL == "" {
+		t.Fatal("no delete_url returned")
+	}
+	r := httptest.NewRequest(http.MethodDelete, deleteURL, nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, body = %s", w.Code, w.Body)
+	}
+}
+
+func TestUploadRequiresAToken(t *testing.T) {
+	app := newTestApp(t)
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", "", nil))
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
+
+// A token in the query string has already leaked into access logs, browser history and
+// Referer headers, so it is refused rather than quietly ignored.
+func TestTokenInQueryStringIsRefused(t *testing.T) {
+	app := newTestApp(t)
+	token, _ := MintToken(context.Background(), app.DB, "test")
+
+	r := uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil)
+	r.URL.RawQuery = "token=" + token
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Authorization header") {
+		t.Errorf("the error does not explain why: %s", w.Body)
+	}
+}
+
+func TestRevokedTokenIsRefused(t *testing.T) {
+	app := newTestApp(t)
+	token, _ := MintToken(context.Background(), app.DB, "test")
+	if _, err := app.DB.Exec(`UPDATE api_tokens SET revoked_at = 1`); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil))
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestUploadsPerHourAreCapped(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+	token, _ := MintToken(context.Background(), app.DB, "test")
+
+	for i := range UploadsPerHour {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil))
+		if w.Code != http.StatusCreated {
+			t.Fatalf("upload %d: status = %d, body = %s", i, w.Code, w.Body)
+		}
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil))
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 on upload %d", w.Code, UploadsPerHour+1)
+	}
+}
+
+func TestBlockedHashCannotBeReUploaded(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+	token, _ := MintToken(context.Background(), app.DB, "test")
+	body := samplePNG(t, 6, 6)
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, uploadRequest(t, body, "a.png", token, nil))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body)
+	}
+
+	upload, err := app.FindUploadBy(context.Background(), "id", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Purge(context.Background(), upload, "blocked", true); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same image again, this time with different metadata: the hash is taken after
+	// stripping, so an EXIF tweak does not defeat the blocklist.
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, uploadRequest(t, body, "a.png", token, nil))
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "blocked") {
+		t.Errorf("body = %s", w.Body)
+	}
+}
+
+func TestAdminIsClosedWhenUnconfigured(t *testing.T) {
+	app := newTestApp(t)
+	app.Config.AdminUser, app.Config.AdminPassword = "", ""
+
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://priito.test/admin", nil))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 - an unconfigured admin is closed, not open", w.Code)
+	}
+}
+
+func TestAdminAuthAndOrigin(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+
+	do := func(method, origin string, auth bool) int {
+		var r *http.Request
+		if method == http.MethodPost {
+			r = httptest.NewRequest(method, "http://priito.test/admin/actions",
+				strings.NewReader("do=handle&id=1"))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		} else {
+			r = httptest.NewRequest(method, "http://priito.test/admin", nil)
+		}
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		if auth {
+			r.SetBasicAuth("admin", "hunter2")
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w.Code
+	}
+
+	if got := do(http.MethodGet, "", false); got != http.StatusUnauthorized {
+		t.Errorf("no credentials = %d, want 401", got)
+	}
+	if got := do(http.MethodGet, "", true); got != http.StatusOK {
+		t.Errorf("good credentials = %d, want 200", got)
+	}
+	// Basic auth is replayed by the browser on cross-site POSTs; without this check any page
+	// on the internet could drive the dashboard.
+	if got := do(http.MethodPost, "http://evil.test", true); got != http.StatusForbidden {
+		t.Errorf("cross-origin POST = %d, want 403", got)
+	}
+	if got := do(http.MethodPost, "http://priito.test", true); got != http.StatusSeeOther {
+		t.Errorf("same-origin POST = %d, want 303", got)
+	}
+}
+
+// Behind Cloudflare, CF-Connecting-IP is the only address a client cannot forge. Falling back
+// to X-Forwarded-For would turn every rate limit here into decoration.
+func TestRefusesForgedForwardedFor(t *testing.T) {
+	app := newTestApp(t)
+	app.Config.TrustProxy = "cloudflare"
+	token, _ := MintToken(context.Background(), app.DB, "test")
+
+	r := uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil)
+	r.Header.Set("X-Forwarded-For", "1.2.3.4")
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 when CF-Connecting-IP is absent", w.Code)
+	}
+
+	r = uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil)
+	r.Header.Set("CF-Connecting-IP", "1.2.3.4")
+	w = httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d with CF-Connecting-IP set, body = %s", w.Code, w.Body)
+	}
+}
+
+func TestResponsesCarryTheSecurityHeaders(t *testing.T) {
+	app := newTestApp(t)
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://priito.test/", nil))
+
+	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q", got)
+	}
+	if got := w.Header().Get("X-Robots-Tag"); !strings.Contains(got, "noindex") {
+		t.Errorf("X-Robots-Tag = %q", got)
+	}
+}
+
+func TestSkillIsRenderedWithThisInstancesHost(t *testing.T) {
+	app := newTestApp(t)
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w,
+		httptest.NewRequest(http.MethodGet, "http://priito.test/priito-screenshot/SKILL.md", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "http://priito.test/api/v1/uploads") {
+		t.Error("the skill does not point at this instance")
+	}
+	// text/template, not html/template: HTML-escaping would mangle every code fence.
+	if strings.Contains(body, "&amp;") || strings.Contains(body, "&#34;") {
+		t.Error("the skill was HTML-escaped")
+	}
+}
+
+func TestPurgeRemovesExpiredUploads(t *testing.T) {
+	app := newTestApp(t)
+	token, _ := MintToken(context.Background(), app.DB, "test")
+
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", token,
+		map[string]string{"expires_in": "1m"}))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body)
+	}
+	if _, err := app.DB.Exec(`UPDATE uploads SET expires_at = 1`); err != nil {
+		t.Fatal(err)
+	}
+
+	app.PurgeExpired(context.Background())
+
+	var remaining int
+	app.DB.QueryRow(`SELECT COUNT(*) FROM uploads`).Scan(&remaining)
+	if remaining != 0 {
+		t.Fatalf("%d uploads survived the purge", remaining)
+	}
+	// The audit trail deliberately outlives the file it describes.
+	var events int
+	app.DB.QueryRow(`SELECT COUNT(*) FROM upload_events WHERE action = 'purged'`).Scan(&events)
+	if events != 1 {
+		t.Fatalf("purge events = %d, want 1", events)
+	}
+}

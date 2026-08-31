@@ -1,0 +1,69 @@
+{{define "drop.html"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>priito</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<main class="wrap" id="app" data-accept="{{.Accept}}">
+  <h1>priito</h1>
+  <p class="lede">
+    Drop a screenshot, get a public URL you can paste straight into a pull request.
+    Uploads are deleted after {{.Retention}}.
+  </p>
+
+  {{if .Local}}
+  <p class="warn">
+    No bucket is configured, so files are served from this host. GitHub cannot reach these
+    URLs &mdash; this mode is for working on the service, not for real pull requests.
+  </p>
+  {{end}}
+
+  <label class="token">
+    API token
+    <input type="password" id="token" placeholder="priito_..." autocomplete="off" spellcheck="false">
+    <small>Kept in this browser only. Mint one with <code>priito token "my laptop"</code>.</small>
+  </label>
+
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept="{{.Accept}}">
+    <span id="hint">Drop a file here, paste, or click to choose one</span>
+  </label>
+
+  <p class="limits">PNG, JPEG, GIF, WebP, MP4, WebM &middot; up to {{.MaxMB}} MB</p>
+
+  <div class="result" id="result" hidden>
+    <img id="preview" alt="" hidden>
+    <video id="videoPreview" controls hidden></video>
+    <input type="text" id="markdown" readonly>
+    <div class="row">
+      <button type="button" id="copy">Copy markdown</button>
+      <button type="button" id="remove">Delete now</button>
+    </div>
+    <p class="expiry" id="expiry"></p>
+  </div>
+
+  <p class="error" id="error" hidden></p>
+
+  <section class="install">
+    <h2>Claude Code skill</h2>
+    <p class="limits">
+      Teaches Claude to upload a screenshot here and paste it into a pull request. Installs for
+      every project; drop the <code>~</code> for one repo.
+    </p>
+<pre><code>mkdir -p ~/.claude/skills/priito-screenshot
+curl -sfo ~/.claude/skills/priito-screenshot/SKILL.md \
+  {{.SkillURL}}
+export PRIITO_API_TOKEN=your-token</code></pre>
+  </section>
+
+  <p class="limits">
+    <a href="/priito-screenshot/SKILL.md">Read the skill</a> &middot;
+    <a href="/abuse_reports/new">Report content</a>
+  </p>
+</main>
+<script src="/static/drop.js"></script>
+</body>
+</html>{{end}}

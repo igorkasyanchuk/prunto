@@ -1,0 +1,127 @@
+{{define "admin.html"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin &middot; priito</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<main class="wrap wide">
+  <h1>priito admin</h1>
+
+  {{if .Minted}}
+  <p class="minted">New token, shown once: <code>{{.Minted}}</code></p>
+  {{end}}
+
+  <h2>Open reports ({{len .Reports}})</h2>
+  {{if .Reports}}
+  <table>
+    <tr><th>URL</th><th>Reason</th><th>When</th><th>File</th><th></th></tr>
+    {{range .Reports}}
+    <tr>
+      <td class="mono">{{.URL}}</td>
+      <td>{{.Reason}}</td>
+      <td>{{stamp .CreatedAt}}</td>
+      <td>
+        {{if .Upload}}
+          <form method="post" action="/admin/actions" class="inline">
+            <input type="hidden" name="id" value="{{.Upload.ID}}">
+            <button name="do" value="remove">Remove</button>
+            <button name="do" value="remove_block">Remove + block</button>
+          </form>
+        {{else}}<span class="muted">already gone</span>{{end}}
+      </td>
+      <td>
+        <form method="post" action="/admin/actions" class="inline">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <button name="do" value="handle">Handled</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}<p class="muted">Nothing open.</p>{{end}}
+
+  <h2>Uploads</h2>
+  <table>
+    <tr><th>File</th><th>Type</th><th>Size</th><th>Token</th><th>Expires</th><th></th></tr>
+    {{range .Uploads}}
+    <tr>
+      <td class="mono"><a href="{{$.CDNBaseURL}}/{{.ObjectKey}}" rel="noreferrer">{{.ObjectKey}}</a></td>
+      <td>{{.ContentType}}</td>
+      <td>{{bytes .ByteSize}}</td>
+      <td class="mono">{{if .APITokenID.Valid}}#{{.APITokenID.Int64}}{{else}}&mdash;{{end}}</td>
+      <td>{{stamp .ExpiresAt}}</td>
+      <td>
+        <form method="post" action="/admin/actions" class="inline">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <button name="do" value="remove">Remove</button>
+          <button name="do" value="remove_block">Remove + block</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+
+  <h2>Tokens</h2>
+  <form method="post" action="/admin/actions" class="inline mint">
+    <input type="text" name="label" placeholder="label" required>
+    <button name="do" value="mint">Mint token</button>
+  </form>
+  <table>
+    <tr><th>Label</th><th>Uploads</th><th>Last used</th><th>Created</th><th></th></tr>
+    {{range .Tokens}}
+    <tr>
+      <td>{{.Label}}</td>
+      <td>{{.Uploads}}</td>
+      <td>{{if .LastUsedAt}}{{stamp .LastUsedAt}}{{else}}<span class="muted">never</span>{{end}}</td>
+      <td>{{stamp .CreatedAt}}</td>
+      <td>
+        <form method="post" action="/admin/actions" class="inline">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <button name="do" value="revoke">Revoke</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+
+  <h2>Blocked hashes</h2>
+  {{if .Blocked}}
+  <table>
+    <tr><th>Hash</th><th>Reason</th><th>When</th><th></th></tr>
+    {{range .Blocked}}
+    <tr>
+      <td class="mono">{{short .ContentHash}}&hellip;</td>
+      <td>{{.Action}}</td>
+      <td>{{stamp .CreatedAt}}</td>
+      <td>
+        <form method="post" action="/admin/actions" class="inline">
+          <input type="hidden" name="id" value="{{.ContentHash}}">
+          <button name="do" value="unblock">Unblock</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}<p class="muted">None.</p>{{end}}
+
+  <h2>Audit trail</h2>
+  <p class="muted">Append-only, kept for 90 days. It outlives the file it describes.</p>
+  <table>
+    <tr><th>Action</th><th>Hash</th><th>Type</th><th>Size</th><th>Address</th><th>When</th></tr>
+    {{range .Events}}
+    <tr>
+      <td>{{.Action}}</td>
+      <td class="mono">{{short .ContentHash}}&hellip;</td>
+      <td>{{.ContentType}}</td>
+      <td>{{bytes .ByteSize}}</td>
+      <td class="mono">{{.IP}}</td>
+      <td>{{stamp .CreatedAt}}</td>
+    </tr>
+    {{end}}
+  </table>
+</main>
+</body>
+</html>{{end}}
