@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -166,9 +167,9 @@ func (a *App) withSecurityHeaders(next http.Handler) http.Handler {
 // directly (see README).
 func (a *App) clientIP(r *http.Request) (string, bool) {
 	if a.Config.TrustProxy != "cloudflare" {
-		host, _, _ := strings.Cut(r.RemoteAddr, ":")
-		if i := strings.LastIndex(r.RemoteAddr, ":"); i > 0 {
-			host = strings.Trim(r.RemoteAddr[:i], "[]")
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			host = r.RemoteAddr // no port, as in a test or a unix socket
 		}
 		return host, host != ""
 	}

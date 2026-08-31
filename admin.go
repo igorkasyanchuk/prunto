@@ -184,15 +184,25 @@ func (a *App) openReports(ctx context.Context) ([]adminReport, error) {
 			return nil, err
 		}
 		r.CreatedAt = time.Unix(created, 0).UTC()
-		// The upload is usually already gone; that is expected, not an error.
-		if r.UploadToken != "" {
-			if u, err := a.FindUploadBy(ctx, "token", r.UploadToken); err == nil {
-				r.Upload = &u
-			}
-		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Resolving the uploads happens only once the cursor above is closed. The pool is capped at
+	// a single connection, so querying while these rows are still open would wait forever for
+	// the connection this very cursor holds.
+	rows.Close()
+	for i := range out {
+		// The upload is usually already gone; that is expected, not an error.
+		if out[i].UploadToken == "" {
+			continue
+		}
+		if u, err := a.FindUploadBy(ctx, "token", out[i].UploadToken); err == nil {
+			out[i].Upload = &u
+		}
+	}
+	return out, nil
 }
 
 func (a *App) recentUploads(ctx context.Context) ([]Upload, error) {

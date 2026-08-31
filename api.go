@@ -134,10 +134,11 @@ func readUploadPart(r *http.Request) (body []byte, filename, expiresIn string, e
 		switch part.FormName() {
 		case "file":
 			filename = part.FileName()
-			body, err = readCapped(part, MaxBytes)
+			body, err = readCapped(part, MaxBytes,
+				fmt.Sprintf("The file is larger than %d MB", MaxBytes>>20))
 		case "expires_in":
 			var v []byte
-			v, err = readCapped(part, 64)
+			v, err = readCapped(part, 64, "expires_in is too long")
 			expiresIn = string(v)
 		default:
 			_, err = io.Copy(io.Discard, io.LimitReader(part, 4<<10))
@@ -153,13 +154,13 @@ func readUploadPart(r *http.Request) (body []byte, filename, expiresIn string, e
 	return body, filename, expiresIn, nil
 }
 
-func readCapped(part *multipart.Part, limit int64) ([]byte, error) {
+func readCapped(part *multipart.Part, limit int64, tooBig string) ([]byte, error) {
 	b, err := io.ReadAll(io.LimitReader(part, limit+1))
 	if err != nil {
 		return nil, err
 	}
 	if int64(len(b)) > limit {
-		return nil, ErrRejected{fmt.Sprintf("The file is larger than %d MB", MaxBytes>>20)}
+		return nil, ErrRejected{tooBig}
 	}
 	return b, nil
 }

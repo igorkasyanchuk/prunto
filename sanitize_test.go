@@ -370,3 +370,15 @@ func TestProgressiveJPEGKeepsEveryScan(t *testing.T) {
 		t.Error("output does not end at EOI")
 	}
 }
+
+// PNG dimensions are uint32, so a maximal canvas overflows a 64-bit int to a negative number.
+// Multiplying to check the cap let exactly that value through.
+func TestOversizedCanvasCannotOverflowTheGuard(t *testing.T) {
+	body := samplePNG(t, 8, 8)
+	binary.BigEndian.PutUint32(body[16:20], 4294967295)
+	binary.BigEndian.PutUint32(body[20:24], 4294967295)
+
+	if _, _, err := Sanitize(body); err == nil {
+		t.Fatal("a 4294967295x4294967295 canvas was accepted")
+	}
+}

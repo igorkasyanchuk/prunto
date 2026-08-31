@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type Upload struct {
@@ -191,13 +192,23 @@ func displayFilename(name string) string {
 		}
 		return r
 	}, name)
-	if len(name) > 120 {
-		name = name[:120]
-	}
+	name = truncate(name, 120)
 	if name == "." || name == "/" {
 		return ""
 	}
 	return name
+}
+
+// truncate cuts to at most limit bytes without splitting a rune in half, which would leave
+// invalid UTF-8 in the database and replacement characters in the dashboard.
+func truncate(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit]
 }
 
 func randToken(n int) string {

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestApp(t *testing.T) *App {
@@ -325,5 +326,74 @@ func TestPurgeRemovesExpiredUploads(t *testing.T) {
 	app.DB.QueryRow(`SELECT COUNT(*) FROM upload_events WHERE action = 'purged'`).Scan(&events)
 	if events != 1 {
 		t.Fatalf("purge events = %d, want 1", events)
+	}
+}
+
+// The pool is capped at one connection, so resolving each report's upload while the report
+// cursor is still open waited forever for the connection that cursor held. It only showed up
+// with a report whose upload still exists, which is the case an operator actually sees.
+func TestAdminLoadsWithAnOpenReport(t *testing.T) {
+	app := newTestApp(t)
+	token, _ := MintToken(context.Background(), app.DB, "test")
+
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("upload status = %d", w.Code)
+	}
+	upload, err := app.FindUploadBy(context.Background(), "id", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB.Exec(
+		`INSERT INTO abuse_reports (url, upload_token, reason, created_at) VALUES (?,?,?,?)`,
+		"http://cdn.test/"+upload.ObjectKey, upload.Token, "bad", time.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan int, 1)
+	go func() {
+		r := httptest.NewRequest(http.MethodGet, "http://priito.test/admin", nil)
+		r.SetBasicAuth("admin", "hunter2")
+		rec := httptest.NewRecorder()
+		app.Routes().ServeHTTP(rec, r)
+		done <- rec.Code
+	}()
+
+	select {
+	case code := <-done:
+		if code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("/admin hung: a nested query starved on the single connection")
+	}
+}
+
+// A browser seeking within a <video> asks for a byte range; answering 200 with the whole body
+// leaves the scrubber dead.
+func TestLocalBlobServesRanges(t *testing.T) {
+	app := newTestApp(t)
+	token, _ := MintToken(context.Background(), app.DB, "test")
+
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("upload status = %d", w.Code)
+	}
+	var payload map[string]any
+	json.Unmarshal(w.Body.Bytes(), &payload)
+	url, _ := payload["url"].(string)
+
+	r := httptest.NewRequest(http.MethodGet, url, nil)
+	r.Header.Set("Range", "bytes=0-7")
+	w = httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, r)
+
+	if w.Code != http.StatusPartialContent {
+		t.Fatalf("status = %d, want 206", w.Code)
+	}
+	if got := w.Body.Len(); got != 8 {
+		t.Fatalf("body = %d bytes, want 8", got)
 	}
 }

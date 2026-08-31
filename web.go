@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"embed"
 	"html/template"
@@ -134,12 +135,7 @@ func (a *App) handleCreateAbuseReport(w http.ResponseWriter, r *http.Request) {
 		a.render(w, "abuse.html", view)
 		return
 	}
-	if len(url) > 2000 {
-		url = url[:2000]
-	}
-	if len(reason) > 2000 {
-		reason = reason[:2000]
-	}
+	url, reason = truncate(url, 2000), truncate(reason, 2000)
 
 	// Store the token parsed out of the URL rather than a foreign key: the upload is usually
 	// already gone by the time a report arrives, and that is the normal case, not an error.
@@ -182,5 +178,8 @@ func (a *App) handleLocalBlob(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "inline")
 	w.Header().Set("Content-Security-Policy", "sandbox")
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	w.Write(body)
+	// ServeContent rather than Write, so Range requests work: a browser seeking within a
+	// <video> asks for a byte range, and a handler that answers 200 with the whole body
+	// leaves the scrubber dead.
+	http.ServeContent(w, r, key, time.Time{}, bytes.NewReader(body))
 }

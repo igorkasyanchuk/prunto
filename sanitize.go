@@ -27,6 +27,13 @@ import (
 // decoder of ours; it keeps absurd canvases out of the bucket and out of viewers.
 const MaxPixels = 50_000_000
 
+// tooManyPixels compares by division rather than multiplying. PNG dimensions are uint32, and a
+// maximal 4294967295 x 4294967295 canvas overflows a 64-bit int to a negative number, which
+// would sail straight past a `tooManyPixels(w, h)` test.
+func tooManyPixels(w, h int) bool {
+	return w > 0 && h > 0 && w > MaxPixels/h
+}
+
 // ErrRejected carries a message meant for the uploader.
 type ErrRejected struct{ msg string }
 
@@ -149,7 +156,7 @@ func Sanitize(b []byte) ([]byte, Kind, error) {
 	if w <= 0 || h <= 0 {
 		return nil, Kind{}, reject("This file does not look like a valid %s", kind.Ext)
 	}
-	if w*h > MaxPixels {
+	if tooManyPixels(w, h) {
 		return nil, Kind{}, reject("Images over %d megapixels are not allowed", MaxPixels/1_000_000)
 	}
 	return out, kind, nil
@@ -208,7 +215,7 @@ func stripPNG(b []byte) ([]byte, int, int, error) {
 			w = int(binary.BigEndian.Uint32(b[i+8 : i+12]))
 			h = int(binary.BigEndian.Uint32(b[i+12 : i+16]))
 			// Bail out before allocating anything on an absurd canvas.
-			if w > 0 && h > 0 && w*h > MaxPixels {
+			if tooManyPixels(w, h) {
 				return nil, w, h, nil
 			}
 		}
@@ -270,7 +277,7 @@ func stripJPEG(b []byte) ([]byte, int, int, error) {
 			if len(payload) >= 5 {
 				h = int(binary.BigEndian.Uint16(payload[1:3]))
 				w = int(binary.BigEndian.Uint16(payload[3:5]))
-				if w > 0 && h > 0 && w*h > MaxPixels {
+				if tooManyPixels(w, h) {
 					return nil, w, h, nil
 				}
 			}
@@ -321,7 +328,7 @@ func stripGIF(b []byte) ([]byte, int, int, error) {
 	}
 	w := int(binary.LittleEndian.Uint16(b[6:8]))
 	h := int(binary.LittleEndian.Uint16(b[8:10]))
-	if w > 0 && h > 0 && w*h > MaxPixels {
+	if tooManyPixels(w, h) {
 		return nil, w, h, nil
 	}
 
@@ -476,7 +483,7 @@ func stripWebP(b []byte) ([]byte, int, int, error) {
 	if len(body) == 0 {
 		return nil, 0, 0, reject("This WebP has no image data")
 	}
-	if w > 0 && h > 0 && w*h > MaxPixels {
+	if tooManyPixels(w, h) {
 		return nil, w, h, nil
 	}
 
