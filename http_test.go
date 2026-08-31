@@ -9,6 +9,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -297,6 +299,41 @@ func TestSkillIsRenderedWithThisInstancesHost(t *testing.T) {
 	// text/template, not html/template: HTML-escaping would mangle every code fence.
 	if strings.Contains(body, "&amp;") || strings.Contains(body, "&#34;") {
 		t.Error("the skill was HTML-escaped")
+	}
+
+	// Previously installed skills refresh themselves against the pre-rename path.
+	w = httptest.NewRecorder()
+	app.Routes().ServeHTTP(w,
+		httptest.NewRequest(http.MethodGet, "http://prunto.test/priito-screenshot/SKILL.md", nil))
+	if w.Code != http.StatusOK {
+		t.Errorf("legacy skill path status = %d, want 200", w.Code)
+	}
+}
+
+// The rename must not strand pre-rename deployments: the old env var still configures the
+// base URL, and an existing priito.db is adopted rather than abandoned for an empty DB.
+func TestRenameCompatShims(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("PRUNTO_BASE_URL", "")
+	t.Setenv("PRIITO_BASE_URL", "https://old.example.com")
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BaseURL != "https://old.example.com" {
+		t.Fatalf("BaseURL = %q, want the PRIITO_BASE_URL fallback", cfg.BaseURL)
+	}
+
+	old := filepath.Join(cfg.DataDir, "priito.db")
+	if err := os.WriteFile(old, []byte("not empty"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	adoptRenamedDB(cfg, log.New(io.Discard, "", 0))
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Error("priito.db was not renamed")
+	}
+	if b, err := os.ReadFile(cfg.DBPath()); err != nil || string(b) != "not empty" {
+		t.Errorf("prunto.db = %q, %v; want the adopted file", b, err)
 	}
 }
 

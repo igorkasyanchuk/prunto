@@ -27,11 +27,12 @@ This skill does not capture anything. Use whatever is already available:
 ## Uploading
 
 Needs a token for {{.BaseURL}}, the instance this skill was downloaded from, in the
-environment: `PRUNTO_API_TOKEN` if it is set, `PRUNTO_TOKEN` otherwise. Every command below
-reads both. If neither is set, ask the user for a token rather than guessing.
+environment: `PRUNTO_API_TOKEN` if it is set, `PRUNTO_TOKEN` otherwise (the pre-rename
+`PRIITO_API_TOKEN` and `PRIITO_TOKEN` still work). Every command below reads all four. If
+none is set, ask the user for a token rather than guessing.
 
 ```bash
-curl -sf -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-$PRUNTO_TOKEN}" -F "file=@PATH" \
+curl -sf -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-${PRUNTO_TOKEN:-${PRIITO_API_TOKEN:-$PRIITO_TOKEN}}}" -F "file=@PATH" \
   "{{.BaseURL}}/api/v1/uploads"
 ```
 
@@ -55,7 +56,7 @@ Take `.markdown` for a PR body. Keep `.delete_url` in your reply so the user can
 file early:
 
 ```bash
-curl -X DELETE -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-$PRUNTO_TOKEN}" "DELETE_URL"
+curl -X DELETE -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-${PRUNTO_TOKEN:-${PRIITO_API_TOKEN:-$PRIITO_TOKEN}}}" "DELETE_URL"
 ```
 
 Limits: {{.MaxMB}} MB per file; **PNG, JPEG, GIF, WebP, MP4 and WebM only** - no PDF, no SVG,

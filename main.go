@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -28,6 +29,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf("configuration: %v", err)
 	}
+	adoptRenamedDB(cfg, logger)
 	db, err := OpenDB(cfg.DBPath())
 	if err != nil {
 		logger.Fatalf("opening %s: %v", cfg.DBPath(), err)
@@ -100,6 +102,26 @@ func main() {
 	<-drained
 }
 
+// adoptRenamedDB picks up a database written before the rename to prunto. Without it an
+// upgraded deployment boots against a fresh empty prunto.db while every token digest and
+// upload row sits in the abandoned priito.db — silently, since SQLite creates on open.
+// ponytail: one-release shim, delete once pre-rename deployments are gone.
+func adoptRenamedDB(cfg Config, logger *log.Logger) {
+	if _, err := os.Stat(cfg.DBPath()); !os.IsNotExist(err) {
+		return
+	}
+	for _, ext := range []string{"", "-shm", "-wal"} {
+		old := filepath.Join(cfg.DataDir, "priito.db"+ext)
+		if _, err := os.Stat(old); err != nil {
+			continue
+		}
+		if err := os.Rename(old, cfg.DBPath()+ext); err != nil {
+			logger.Fatalf("adopting pre-rename database %s: %v", old, err)
+		}
+		logger.Printf("adopted pre-rename database file %s as %s", old, cfg.DBPath()+ext)
+	}
+}
+
 func runCommand(app *App, args []string) error {
 	switch args[0] {
 	case "token":
@@ -128,6 +150,9 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/uploads", a.handleCreateUpload)
 	mux.HandleFunc("DELETE /api/v1/uploads/{deleteToken}", a.handleDeleteUpload)
 	mux.HandleFunc("GET /prunto-screenshot/SKILL.md", a.handleSkill)
+	// ponytail: legacy alias from the rename; previously installed skills refresh themselves
+	// with `curl -sf` (no -L) against this path, so serve it rather than redirect.
+	mux.HandleFunc("GET /priito-screenshot/SKILL.md", a.handleSkill)
 	mux.HandleFunc("GET /abuse_reports/new", a.handleNewAbuseReport)
 	mux.HandleFunc("POST /abuse_reports", a.handleCreateAbuseReport)
 	mux.HandleFunc("GET /admin", a.guard(a.handleAdmin))

@@ -54,7 +54,9 @@ func LoadConfig() (Config, error) {
 	c := Config{
 		Addr:          ":" + env("PORT", "3000"),
 		DataDir:       env("DATA_DIR", "./data"),
-		BaseURL:       strings.TrimSuffix(env("PRUNTO_BASE_URL", ""), "/"),
+		// ponytail: PRIITO_BASE_URL fallback is a one-release shim for deployments that
+		// predate the rename; drop it once those have moved to PRUNTO_BASE_URL.
+		BaseURL:       strings.TrimSuffix(env("PRUNTO_BASE_URL", os.Getenv("PRIITO_BASE_URL")), "/"),
 		Bucket:        env("B2_BUCKET", ""),
 		KeyID:         env("B2_KEY_ID", ""),
 		AppKey:        env("B2_APPLICATION_KEY", ""),

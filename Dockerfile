@@ -1,6 +1,8 @@
 # Two stages, and the second one is empty. No libvips, no cgo, nothing to CVE-scan but the
 # binary itself - which is the whole point of dropping the decoder.
-FROM golang:1.24-alpine AS build
+# Unpinned on purpose: the binary ships this toolchain's stdlib, and govulncheck in CI
+# flags stdlib vulns fixed only in newer Go patches — a pinned stale image would ship them.
+FROM golang:alpine AS build
 
 WORKDIR /src
 RUN apk add --no-cache ca-certificates
