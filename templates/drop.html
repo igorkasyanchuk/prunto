@@ -46,7 +46,7 @@
   <section class="install">
     <h2>Use it from your AI coding agent</h2>
     <p class="install-lede">
-      The skill teaches Claude Code to upload a screenshot here and paste it straight into a
+      The skill teaches your AI coding agent to upload a screenshot here and paste it straight into a
       pull request. Install it once for everything you work on, or just for one repository.
       Either way you need a token &mdash; create one in <a href="/admin">the admin page</a>.
     </p>
@@ -81,22 +81,28 @@ export PRUNTO_API_TOKEN=your-token</code></pre>
         <span><strong>Or let an AI do it</strong> &middot; paste this to any assistant</span>
         <button type="button" data-copy-target="setup-prompt">Copy</button>
       </div>
-<pre id="setup-prompt">Set up the "prunto-screenshot" skill for me.
+<pre id="setup-prompt">Please set up the "prunto-screenshot" instructions on this machine for me.
 
-1. Create the directory and download the skill:
-   mkdir -p ~/.claude/skills/prunto-screenshot
-   curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md {{.SkillURL}}
-   For this repository only, use .claude/skills/... instead of ~/.claude/skills/...
+1. Download the file:
+   curl -sfo SKILLS_DIR/prunto-screenshot/SKILL.md {{.SkillURL}}
+   Create the directory first. Put it wherever you load reusable instructions
+   from. If you do not have such a place, save it somewhere sensible in the
+   project and read it when I ask for the task below.
+   Common locations: ~/.claude/skills/prunto-screenshot/SKILL.md for every
+   project, or .claude/skills/prunto-screenshot/SKILL.md in a repo for just
+   that one.
 
 2. Ask me for my prunto API token, then add
    export PRUNTO_API_TOKEN=&lt;the token&gt;
    to my shell profile and tell me to open a new terminal.
 
-3. Read the downloaded file back to confirm it arrived, and summarise what it does.
+3. Read the downloaded file back to confirm it arrived, and summarise what it
+   does in one or two sentences.
 
-For context: the skill uploads a local image, GIF or short video to
-{{.BaseURL}} and returns a public URL to paste into a GitHub pull request
-body. I create tokens at {{.BaseURL}}/admin. Uploads are deleted after {{.Retention}}.</pre>
+For context: the file explains how to upload a local image, GIF or short video
+to {{.BaseURL}} and get back a public URL, so it can be pasted
+into a GitHub pull request body. I create tokens at {{.BaseURL}}/admin.
+Uploads are deleted after {{.Retention}}.</pre>
     </div>
   </section>
 
