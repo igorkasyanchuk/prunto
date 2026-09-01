@@ -532,7 +532,7 @@ func TestAdminLoadsWithAnOpenReport(t *testing.T) {
 
 // A browser seeking within a <video> asks for a byte range; answering 200 with the whole body
 // leaves the scrubber dead.
-func TestLocalBlobServesRanges(t *testing.T) {
+func TestBlobServesRanges(t *testing.T) {
 	app := newTestApp(t)
 	token, _ := CreateToken(context.Background(), app.DB, "test")
 
@@ -582,8 +582,9 @@ func TestDropPageCSPIsSelfOnly(t *testing.T) {
 	}
 }
 
-// The bytes come back off the volume with the content type recorded at upload, sandboxed, and
-// honouring Range - a browser scrubbing a <video> depends on the last one.
+// The bytes come back off the volume with the content type recorded at upload and sandboxed,
+// and stop coming back the moment the row says the upload expired. Range lives in
+// TestBlobServesRanges.
 func TestBlobIsServedFromDisk(t *testing.T) {
 	app := newTestApp(t)
 	token, _ := CreateToken(context.Background(), app.DB, "test")
@@ -639,12 +640,19 @@ func TestBlobIsServedFromDisk(t *testing.T) {
 		t.Error("what landed on the volume is not a PNG")
 	}
 
-	if rec := get(map[string]string{"Range": "bytes=0-3"}); rec.Code != http.StatusPartialContent {
-		t.Errorf("range request = %d, want 206", rec.Code)
+	// An expired row is not served, even while its file is still on disk waiting for the
+	// hourly sweep: the sweep is bounded, so it cannot be what enforces expires_at.
+	if _, err := app.DB.Exec(`UPDATE uploads SET expires_at = ?`, time.Now().Add(-time.Minute).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(app.Config.DataDir, "blobs", key)); err != nil {
+		t.Fatalf("the file should still be on disk for this case: %v", err)
+	}
+	if rec := get(nil); rec.Code != http.StatusNotFound {
+		t.Errorf("expired blob = %d, want 404", rec.Code)
 	}
 
-	// A key that is not in the database is a 404 even if something sits on disk under it.
-	rec = get(nil)
+	// A key that is not in the database at all is a 404 too.
 	if _, err := app.DB.Exec(`DELETE FROM uploads`); err != nil {
 		t.Fatal(err)
 	}

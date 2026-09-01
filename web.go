@@ -113,7 +113,7 @@ var uploadTokenPattern = regexp.MustCompile(`/([\w-]+)\.(?:png|jpg|gif|webp|mp4|
 func (a *App) handleCreateAbuseReport(w http.ResponseWriter, r *http.Request) {
 	ip, ok := a.clientIP(r)
 	if !ok {
-		http.Error(w, "This request did not arrive through the CDN", http.StatusForbidden)
+		http.Error(w, "This request did not arrive through the trusted proxy", http.StatusForbidden)
 		return
 	}
 	// A limiter that cannot count fails open, but it does not fail silently: an operator has to
@@ -165,9 +165,13 @@ func (a *App) handleCreateAbuseReport(w http.ResponseWriter, r *http.Request) {
 // these are attacker-controlled bytes on this app's own origin.
 func (a *App) handleBlob(w http.ResponseWriter, r *http.Request) {
 	key := filepath.Base(r.PathValue("key"))
+	// Expiry is enforced here, not just by the sweep: the sweep runs hourly and clears a
+	// bounded batch, so a file whose time is up outlives it. This is the only path the bytes
+	// are served on, which makes this query the thing that honours the promised expires_at.
 	var contentType string
 	if err := a.DB.QueryRowContext(r.Context(),
-		`SELECT content_type FROM uploads WHERE object_key = ?`, key).Scan(&contentType); err != nil {
+		`SELECT content_type FROM uploads WHERE object_key = ? AND expires_at > ?`,
+		key, time.Now().Unix()).Scan(&contentType); err != nil {
 		if err != sql.ErrNoRows {
 			a.Log.Printf("looking up blob %s: %v", key, err)
 		}
