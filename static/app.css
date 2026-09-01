@@ -69,6 +69,21 @@ button {
 button:hover { border-color: var(--accent); color: var(--accent); }
 .expiry { color: var(--muted); font-size: .8rem; }
 .install { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: 1.5rem; }
+.install h2 { margin: 0 0 .5rem; font-size: 1.05rem; }
+.install-lede { color: var(--muted); font-size: .9rem; margin: 0 0 1.25rem; }
+.install-note { color: var(--muted); font-size: .8rem; margin: -.4rem 0 1.25rem; }
+
+/* A snippet is a labelled block with its own copy button. The header carries the label so the
+   reader can tell the variants apart without reading the commands. */
+.snippet { margin-bottom: 1.25rem; }
+.snippet-head {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  flex-wrap: wrap; margin-bottom: .4rem; font-size: .85rem; color: var(--muted);
+}
+.snippet-head strong { color: var(--fg); font-weight: 600; }
+.snippet-head button { padding: .3rem .7rem; font-size: .8rem; }
+.snippet-head button.copied { border-color: var(--accent); color: var(--accent); }
+.snippet pre { margin: 0; font-size: .8rem; line-height: 1.5; white-space: pre; }
 
 table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: .85rem; }
 th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }

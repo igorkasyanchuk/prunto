@@ -20,7 +20,7 @@
   <label class="token">
     API token
     <input type="password" id="token" placeholder="prunto_..." autocomplete="off" spellcheck="false">
-    <small>Kept in this browser only. Create one with <code>prunto token "my laptop"</code>.</small>
+    <small>Kept in this browser only. Create one in <a href="/admin">the admin page</a>.</small>
   </label>
 
   <label class="drop" id="drop">
@@ -44,15 +44,60 @@
   <p class="error" id="error" hidden></p>
 
   <section class="install">
-    <h2>Claude Code skill</h2>
-    <p class="limits">
-      Teaches Claude to upload a screenshot here and paste it into a pull request. Installs for
-      every project; drop the <code>~</code> for one repo.
+    <h2>Use it from your AI coding agent</h2>
+    <p class="install-lede">
+      The skill teaches Claude Code to upload a screenshot here and paste it straight into a
+      pull request. Install it once for everything you work on, or just for one repository.
+      Either way you need a token &mdash; create one in <a href="/admin">the admin page</a>.
     </p>
-<pre><code>mkdir -p ~/.claude/skills/prunto-screenshot
-curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md \
-  {{.SkillURL}}
+
+    <div class="snippet">
+      <div class="snippet-head">
+        <span><strong>Every project</strong> &middot; installs into your home directory</span>
+        <button type="button" data-copy-target="install-global">Copy</button>
+      </div>
+<pre id="install-global"><code>mkdir -p ~/.claude/skills/prunto-screenshot
+curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md {{.SkillURL}}
 export PRUNTO_API_TOKEN=your-token</code></pre>
+    </div>
+
+    <div class="snippet">
+      <div class="snippet-head">
+        <span><strong>This repository only</strong> &middot; run it in the repo root</span>
+        <button type="button" data-copy-target="install-repo">Copy</button>
+      </div>
+<pre id="install-repo"><code>mkdir -p .claude/skills/prunto-screenshot
+curl -sfo .claude/skills/prunto-screenshot/SKILL.md {{.SkillURL}}
+export PRUNTO_API_TOKEN=your-token</code></pre>
+    </div>
+
+    <p class="install-note">
+      The <code>export</code> lasts until you close the terminal. Put it in your shell profile
+      (<code>~/.zshrc</code> or <code>~/.bashrc</code>) to keep it.
+    </p>
+
+    <div class="snippet">
+      <div class="snippet-head">
+        <span><strong>Or let an AI do it</strong> &middot; paste this to any assistant</span>
+        <button type="button" data-copy-target="setup-prompt">Copy</button>
+      </div>
+<pre id="setup-prompt">Set up the "prunto-screenshot" skill for me.
+
+1. Create the directory and download the skill:
+   mkdir -p ~/.claude/skills/prunto-screenshot
+   curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md {{.SkillURL}}
+   For this repository only, use .claude/skills/... instead of ~/.claude/skills/...
+
+2. Ask me for my prunto API token, then add
+   export PRUNTO_API_TOKEN=&lt;the token&gt;
+   to my shell profile and tell me to open a new terminal.
+
+3. Read the downloaded file back to confirm it arrived, and summarise what it does.
+
+For context: the skill uploads a local image, GIF or short video to
+{{.BaseURL}} and returns a public URL to paste into a GitHub pull request
+body. I create tokens at {{.BaseURL}}/admin. Uploads are deleted after {{.Retention}}.</pre>
+    </div>
   </section>
 
   <p class="limits">
@@ -63,5 +108,6 @@ export PRUNTO_API_TOKEN=your-token</code></pre>
   </p>
 </main>
 <script src="/static/drop.js"></script>
+<script src="/static/copy.js" defer></script>
 </body>
 </html>{{end}}

@@ -203,6 +203,41 @@ func TestAdminIsClosedWhenUnconfigured(t *testing.T) {
 	}
 }
 
+// The drop page is where someone lands first, so the two install paths and the paste-to-an-AI
+// prompt all have to be there, each copyable, and each carrying this instance's own URL.
+func TestDropPageExplainsBothInstallPaths(t *testing.T) {
+	app := newTestApp(t)
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/", nil))
+	body := w.Body.String()
+
+	for _, want := range []string{
+		`id="install-global"`,
+		`id="install-repo"`,
+		`id="setup-prompt"`,
+		"mkdir -p ~/.claude/skills/prunto-screenshot",
+		"mkdir -p .claude/skills/prunto-screenshot",
+		"/static/copy.js",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the drop page is missing %q", want)
+		}
+	}
+	// Every block needs a button pointed at it, or the copy affordance is decoration.
+	for _, id := range []string{"install-global", "install-repo", "setup-prompt"} {
+		if !strings.Contains(body, `data-copy-target="`+id+`"`) {
+			t.Errorf("no copy button targets %q", id)
+		}
+	}
+	// The prompt has to name this instance, or it is useless pasted into another machine.
+	if strings.Count(body, "http://prunto.test/prunto-screenshot/SKILL.md") < 3 {
+		t.Error("the install commands and the prompt do not all point at this instance")
+	}
+	if !strings.Contains(body, "http://prunto.test/admin") {
+		t.Error("the prompt does not tell the reader where tokens come from")
+	}
+}
+
 // The dashboard renders a live API token and the CSRF token, so it must not be storable.
 // Authentication also has to come before the CSRF check, or an anonymous caller can make the
 // server parse a form body it will then throw away.
@@ -344,14 +379,14 @@ func TestNewTokenFlashIsCopyable(t *testing.T) {
 	if !strings.Contains(body, `id="copy-token"`) {
 		t.Error("no copy button rendered")
 	}
-	if !strings.Contains(body, "/static/admin.js") {
+	if !strings.Contains(body, "/static/copy.js") {
 		t.Error("the admin page does not load the script that drives the copy button")
 	}
 
 	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/static/admin.js", nil))
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/static/copy.js", nil))
 	if w.Code != http.StatusOK {
-		t.Errorf("/static/admin.js = %d, want 200", w.Code)
+		t.Errorf("/static/copy.js = %d, want 200", w.Code)
 	}
 }
 
