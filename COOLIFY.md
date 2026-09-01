@@ -108,6 +108,12 @@ Add a Cache Rule that actually caches `cdn-prunto.igorkasyanchuk.com`. Two thing
 it: the free egress, and the CSAM scanning below, which only sees images that pass through the
 Cloudflare cache.
 
+Know what that cache costs you on the way out. Blobs are served `max-age=31536000, immutable`,
+so deleting one — the 14-day sweep, a delete URL, or a takedown from `/admin` — removes it from
+the origin but not from Cloudflare's edge, which keeps answering for the rest of that year. The
+origin is genuinely clean (a request with a cache-busting query returns 404); the public URL is
+not. For a takedown, purge that URL from the Cloudflare cache too, or the file is still up.
+
 ### Environment
 
 ```
