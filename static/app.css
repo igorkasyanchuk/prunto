@@ -83,7 +83,12 @@ button:hover { border-color: var(--accent); color: var(--accent); }
 .snippet-head strong { color: var(--fg); font-weight: 600; }
 .snippet-head button { padding: .3rem .7rem; font-size: .8rem; }
 .snippet-head button.copied { border-color: var(--accent); color: var(--accent); }
-.snippet pre { margin: 0; font-size: .8rem; line-height: 1.5; white-space: pre; }
+/* Wrap rather than scroll: the install URL is the longest token on the page and the whole
+   point is that it can be read at a glance. Copy takes textContent, so wrapping is cosmetic. */
+.snippet pre {
+  margin: 0; font-size: .8rem; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
 
 table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: .85rem; }
 th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
