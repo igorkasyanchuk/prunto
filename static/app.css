@@ -19,7 +19,21 @@ h2 { font-size: 1.05rem; margin: 2.5rem 0 .6rem; }
 .lede { color: var(--muted); margin: 0 0 1.75rem; }
 .limits, .muted { color: var(--muted); font-size: .85rem; }
 .error { color: var(--err); }
-.new-token { background: var(--card); border: 1px solid var(--accent); border-radius: 8px; padding: .7rem .9rem; }
+.new-token {
+  background: var(--card); border: 1px solid var(--accent); border-left-width: 4px;
+  border-radius: 8px; padding: 1rem 1.1rem; margin-bottom: 1.5rem;
+}
+.new-token h2 { margin: 0 0 .35rem; font-size: 1rem; color: var(--accent); }
+.new-token-warning { margin: 0 0 .8rem; font-size: .85rem; }
+.new-token-row { display: flex; gap: .5rem; align-items: stretch; flex-wrap: wrap; }
+.new-token-row input {
+  flex: 1 1 22rem; min-width: 0; padding: .5rem .7rem; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--bg); color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem;
+}
+.new-token-row button { flex: 0 0 auto; min-width: 6rem; }
+.new-token-row button.copied { border-color: var(--accent); color: var(--accent); }
+.new-token-hint { margin: .8rem 0 0; font-size: .8rem; color: var(--muted); }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
 pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: .8rem; overflow-x: auto; }
 a { color: var(--accent); }

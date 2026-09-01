@@ -276,6 +276,81 @@ func TestAdminAuthAndOrigin(t *testing.T) {
 	}
 }
 
+// The one-time token is shown once, so the flash has to make it copyable: a real field with
+// the value in it, and the script that drives the copy button actually served.
+func TestNewTokenFlashIsCopyable(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+	cookie, csrf := adminSession(t, handler)
+
+	r := httptest.NewRequest(http.MethodPost, "http://prunto.test/admin/actions",
+		strings.NewReader("do=create&label=laptop&csrf="+csrf))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	r.SetBasicAuth("admin", "hunter2")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d", w.Code)
+	}
+	var created *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == newTokenCookieName {
+			created = c
+		}
+	}
+	if created == nil {
+		t.Fatal("no token cookie to render the flash from")
+	}
+
+	r = httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
+	r.AddCookie(created)
+	r.AddCookie(cookie)
+	r.SetBasicAuth("admin", "hunter2")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	body := w.Body.String()
+
+	if !strings.Contains(body, `value="`+created.Value+`"`) {
+		t.Error("the token is not in a field the user can select and copy")
+	}
+	if !strings.Contains(body, `id="copy-token"`) {
+		t.Error("no copy button rendered")
+	}
+	if !strings.Contains(body, "/static/admin.js") {
+		t.Error("the admin page does not load the script that drives the copy button")
+	}
+
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/static/admin.js", nil))
+	if w.Code != http.StatusOK {
+		t.Errorf("/static/admin.js = %d, want 200", w.Code)
+	}
+}
+
+// The skill is what an agent follows, so the variable it names has to be the one the docs and
+// the drop page tell people to export - and it must point at this instance, not a hardcoded host.
+func TestSkillNamesOneTokenVariable(t *testing.T) {
+	app := newTestApp(t)
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w,
+		httptest.NewRequest(http.MethodGet, "http://prunto.test/prunto-screenshot/SKILL.md", nil))
+	body := w.Body.String()
+
+	if !strings.Contains(body, "$PRUNTO_API_TOKEN") {
+		t.Error("the skill does not use PRUNTO_API_TOKEN")
+	}
+	for _, gone := range []string{"PRIITO_API_TOKEN", "PRIITO_TOKEN", "PRUNTO_TOKEN:-", "priito-screenshot"} {
+		if strings.Contains(body, gone) {
+			t.Errorf("the skill still mentions %q", gone)
+		}
+	}
+	if !strings.Contains(body, "http://prunto.test/api/v1/uploads") ||
+		!strings.Contains(body, "http://prunto.test/blobs/") {
+		t.Error("the skill does not point at this instance's own domain")
+	}
+}
+
 // The pages link the icon by path, and browsers ask for /favicon.ico regardless; both have to
 // resolve or every page load logs a 404.
 func TestFaviconIsServed(t *testing.T) {

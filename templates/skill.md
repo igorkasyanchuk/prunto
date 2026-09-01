@@ -6,7 +6,7 @@ description: Upload a local image, GIF or short video to prunto and embed the re
 # prunto-screenshot
 
 GitHub has no API for attaching an image to a PR description. This skill closes that gap:
-upload the file to prunto, get back a public URL, paste the markdown into the PR body.
+upload the file to {{.BaseURL}}, get back a public URL, paste the markdown into the PR body.
 
 ## Before you upload
 
@@ -14,6 +14,10 @@ upload the file to prunto, get back a public URL, paste the markdown into the PR
 ({{.Retention}}). Look at the image first. Do not upload a screenshot showing API keys,
 tokens, passwords, `.env` contents, customer data, or an internal system the user has not said
 is safe to share. If unsure, ask.
+
+Uploads are deleted after {{.Retention}}, and the image in the PR breaks when that happens. For
+anything that has to outlive the review, tell the user so they can commit the file to the repo
+instead.
 
 ## Getting the file
 
@@ -26,14 +30,11 @@ This skill does not capture anything. Use whatever is already available:
 
 ## Uploading
 
-Needs a token for {{.BaseURL}}, the instance this skill was downloaded from, in the
-environment: `PRUNTO_API_TOKEN` if it is set, `PRUNTO_TOKEN` otherwise (the pre-rename
-`PRIITO_API_TOKEN` and `PRIITO_TOKEN` still work). Every command below reads all four. If
-none is set, ask the user for a token rather than guessing. If only a `PRIITO_*` variable
-is set, suggest the user rename it to the `PRUNTO_*` form — the old names are deprecated.
+Needs `PRUNTO_API_TOKEN` in the environment, holding a token for {{.BaseURL}}. If it is not
+set, ask the user for one rather than guessing - they create it in that instance's `/admin`.
 
 ```bash
-curl -sf -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-${PRUNTO_TOKEN:-${PRIITO_API_TOKEN:-${PRIITO_TOKEN:-}}}}" -F "file=@PATH" \
+curl -sf -H "Authorization: Bearer $PRUNTO_API_TOKEN" -F "file=@PATH" \
   "{{.BaseURL}}/api/v1/uploads"
 ```
 
@@ -53,11 +54,11 @@ Returns:
 }
 ```
 
-Take `.markdown` for a PR body. Keep `.delete_url` in your reply so the user can revoke the
+Take `.markdown` for a PR body. Keep `.delete_url` in your reply so the user can remove the
 file early:
 
 ```bash
-curl -X DELETE -H "Authorization: Bearer ${PRUNTO_API_TOKEN:-${PRUNTO_TOKEN:-${PRIITO_API_TOKEN:-${PRIITO_TOKEN:-}}}}" "DELETE_URL"
+curl -X DELETE -H "Authorization: Bearer $PRUNTO_API_TOKEN" "DELETE_URL"
 ```
 
 Limits: {{.MaxMB}} MB per file; **PNG, JPEG, GIF, WebP, MP4 and WebM only** - no PDF, no SVG,
@@ -108,9 +109,8 @@ autoplays, which is the better choice for anything short.
 ```bash
 mkdir -p ~/.claude/skills/prunto-screenshot
 curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md {{.SkillURL}}
+export PRUNTO_API_TOKEN=your-token
 ```
 
 That is every project. For one repo, save it under `.claude/skills/prunto-screenshot/SKILL.md`
-instead. Either way, export `PRUNTO_API_TOKEN` (or `PRUNTO_TOKEN`) with a token for
-{{.BaseURL}}. If a pre-rename install exists at `~/.claude/skills/priito-screenshot/`,
-delete that directory — two copies of this skill would collide.
+instead. Put the `export` in your shell profile so it survives a new terminal.

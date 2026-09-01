@@ -57,10 +57,10 @@ the network.
 ## API
 
 ```bash
-curl -H "Authorization: Bearer $PRUNTO_TOKEN" -F "file=@shot.png" \
+curl -H "Authorization: Bearer $PRUNTO_API_TOKEN" -F "file=@shot.png" \
   https://prunto.igorkasyanchuk.com/api/v1/uploads
 
-curl -X DELETE -H "Authorization: Bearer $PRUNTO_TOKEN" \
+curl -X DELETE -H "Authorization: Bearer $PRUNTO_API_TOKEN" \
   https://prunto.igorkasyanchuk.com/api/v1/uploads/DELETE_TOKEN
 ```
 

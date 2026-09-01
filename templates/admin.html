@@ -8,13 +8,28 @@
 <link rel="alternate icon" href="/static/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="stylesheet" href="/static/app.css">
+<script src="/static/admin.js" defer></script>
 </head>
 <body>
 <main class="wrap wide">
   <h1>prunto admin</h1>
 
   {{if .NewToken}}
-  <p class="new-token">New token, shown once: <code>{{.NewToken}}</code></p>
+  <section class="new-token" aria-labelledby="new-token-title">
+    <h2 id="new-token-title">Your new API token</h2>
+    <p class="new-token-warning">
+      Copy it now &mdash; this is the only time it is shown. Only its SHA-256 digest is stored,
+      so it cannot be recovered. If you lose it, revoke it below and create another.
+    </p>
+    <div class="new-token-row">
+      <input type="text" id="new-token-value" value="{{.NewToken}}" readonly spellcheck="false"
+             aria-label="New API token">
+      <button type="button" id="copy-token" data-copy-target="new-token-value">Copy</button>
+    </div>
+    <p class="new-token-hint">
+      Use it as <code>Authorization: Bearer &lt;token&gt;</code>, or paste it into the drop page.
+    </p>
+  </section>
   {{end}}
 
   <h2>Open reports ({{len .Reports}})</h2>
