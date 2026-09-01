@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"html/template"
+	"io"
 	"io/fs"
 	"net/http"
 	"path/filepath"
@@ -21,6 +24,36 @@ var templateDir embed.FS
 var staticDir embed.FS
 
 var staticFS, _ = fs.Sub(staticDir, "static")
+
+// assetVersion fingerprints the embedded static files, and every page hangs it off their URLs
+// as ?v=. Without it a deployed CSS or JS change reaches nobody until each browser and the CDN
+// in front of them decide on their own to look again - which is how a fixed stylesheet can sit
+// on the server while every visitor still runs the old one.
+var assetVersion = fingerprintStatic()
+
+func fingerprintStatic() string {
+	h := sha256.New()
+	err := fs.WalkDir(staticFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		f, err := staticFS.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		// The name matters as well as the bytes: a rename with identical content is still a
+		// different set of assets.
+		h.Write([]byte(path))
+		_, err = io.Copy(h, f)
+		return err
+	})
+	if err != nil {
+		// The files are compiled in, so this cannot fail on a build that started at all.
+		panic("fingerprinting the embedded assets: " + err.Error())
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
+}
 
 var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"bytes": humanBytes,
@@ -47,6 +80,7 @@ func (a *App) view() map[string]any {
 		"Retention":   humanDuration(DefaultRetention),
 		"MaxMB":       MaxBytes >> 20,
 		"Accept":      acceptAttribute(),
+		"Assets":      assetVersion,
 	}
 }
 

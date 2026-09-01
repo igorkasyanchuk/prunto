@@ -187,7 +187,7 @@ func (a *App) Routes() http.Handler {
 	// Clients that ignore the <link rel="icon"> tags ask for this by reflex; without the route
 	// it falls through to the 404 handler on every page load.
 	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/static/favicon-32.png", http.StatusMovedPermanently)
+		http.Redirect(w, r, "/static/favicon-32.png?v="+assetVersion, http.StatusFound)
 	})
 
 	// No directory listings: FileServer's autoindex is the one HTML page the app would serve
@@ -197,6 +197,16 @@ func (a *App) Routes() http.Handler {
 		if strings.HasSuffix(r.URL.Path, "/") {
 			http.NotFound(w, r)
 			return
+		}
+		// Every page asks for these with ?v=<fingerprint of the embedded files>, so a given
+		// URL's bytes never change and a deploy changes the URL. Without the fingerprint this
+		// header would pin a stale stylesheet in every browser and CDN for a year.
+		if r.URL.Query().Get("v") == assetVersion {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			// Unversioned or stale-versioned: someone typed the path, or is running a page
+			// from before the last deploy. Let them cache it, but make them check.
+			w.Header().Set("Cache-Control", "no-cache")
 		}
 		static.ServeHTTP(w, r)
 	}))

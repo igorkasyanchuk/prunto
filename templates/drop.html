@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>prunto</title>
-<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<link rel="alternate icon" href="/static/favicon-32.png" sizes="32x32">
-<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="/static/favicon.svg?v={{.Assets}}" type="image/svg+xml">
+<link rel="alternate icon" href="/static/favicon-32.png?v={{.Assets}}" sizes="32x32">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{.Assets}}">
+<link rel="stylesheet" href="/static/app.css?v={{.Assets}}">
 </head>
 <body>
 <main class="wrap" id="app" data-accept="{{.Accept}}">
@@ -113,7 +113,7 @@ Uploads are deleted after {{.Retention}}.</pre>
     <a href="/abuse_reports/new">Report content</a>
   </p>
 </main>
-<script src="/static/drop.js"></script>
-<script src="/static/copy.js" defer></script>
+<script src="/static/drop.js?v={{.Assets}}"></script>
+<script src="/static/copy.js?v={{.Assets}}" defer></script>
 </body>
 </html>{{end}}

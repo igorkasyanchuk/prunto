@@ -203,6 +203,53 @@ func TestAdminIsClosedWhenUnconfigured(t *testing.T) {
 	}
 }
 
+// A stylesheet fix is worthless if browsers keep running the old one, so asset URLs carry a
+// fingerprint of the embedded files and only the current fingerprint gets cached forever.
+func TestStaticAssetsAreFingerprinted(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/", nil))
+	if !strings.Contains(w.Body.String(), "/static/app.css?v="+assetVersion) {
+		t.Errorf("the page does not request the current asset version %q", assetVersion)
+	}
+
+	get := func(url string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, url, nil))
+		return rec
+	}
+
+	current := get("http://prunto.test/static/app.css?v=" + assetVersion)
+	if current.Code != http.StatusOK {
+		t.Fatalf("versioned asset = %d", current.Code)
+	}
+	if got := current.Header().Get("Cache-Control"); !strings.Contains(got, "immutable") {
+		t.Errorf("current version Cache-Control = %q, want it cached hard", got)
+	}
+
+	// A stale or absent version must not be cached hard, or the next deploy cannot reach a
+	// browser that still has the old page.
+	for _, url := range []string{
+		"http://prunto.test/static/app.css",
+		"http://prunto.test/static/app.css?v=deadbeef",
+	} {
+		rec := get(url)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s = %d, want it still served", url, rec.Code)
+		}
+		if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
+			t.Errorf("%s Cache-Control = %q, want no-cache", url, got)
+		}
+	}
+
+	// The fingerprint has to actually track content, or it is decoration.
+	if len(assetVersion) < 8 {
+		t.Errorf("asset version %q is too short to be a fingerprint", assetVersion)
+	}
+}
+
 // The drop page is where someone lands first, so the two install paths and the paste-to-an-AI
 // prompt all have to be there, each copyable, and each carrying this instance's own URL.
 func TestDropPageExplainsBothInstallPaths(t *testing.T) {
@@ -427,10 +474,15 @@ func TestFaviconIsServed(t *testing.T) {
 		}
 	}
 
+	// 302, not 301: it points at a fingerprinted URL, and a permanent redirect would pin
+	// whichever build the browser saw first for the life of that cache entry.
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/favicon.ico", nil))
-	if w.Code != http.StatusMovedPermanently {
-		t.Errorf("/favicon.ico = %d, want 301", w.Code)
+	if w.Code != http.StatusFound {
+		t.Errorf("/favicon.ico = %d, want 302", w.Code)
+	}
+	if loc := w.Header().Get("Location"); !strings.Contains(loc, "?v=") {
+		t.Errorf("/favicon.ico redirects to an unversioned URL: %q", loc)
 	}
 
 	// The drop page has to actually reference it, or the route is decoration.
