@@ -24,7 +24,7 @@ func NewStore(c Config) *Store {
 // traversal attempt has to end at a bare filename.
 func (s *Store) path(key string) string { return filepath.Join(s.dir, filepath.Base(key)) }
 
-func (s *Store) Put(key string, body []byte, _ string) error {
+func (s *Store) Put(key string, body []byte) error {
 	return os.WriteFile(s.path(key), body, 0o640)
 }
 

@@ -115,7 +115,7 @@ func (a *App) CreateUpload(ctx context.Context, body []byte, filename, ip string
 	}
 	u.ObjectKey = u.Token + "." + kind.Ext
 
-	if err := a.Store.Put(u.ObjectKey, stored, kind.ContentType); err != nil {
+	if err := a.Store.Put(u.ObjectKey, stored); err != nil {
 		return Upload{}, fmt.Errorf("storage: %w", err)
 	}
 
