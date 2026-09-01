@@ -115,7 +115,7 @@ func (a *App) CreateUpload(ctx context.Context, body []byte, filename, ip string
 	}
 	u.ObjectKey = u.Token + "." + kind.Ext
 
-	if err := a.Store.Put(ctx, u.ObjectKey, stored, kind.ContentType); err != nil {
+	if err := a.Store.Put(u.ObjectKey, stored, kind.ContentType); err != nil {
 		return Upload{}, fmt.Errorf("storage: %w", err)
 	}
 
@@ -126,8 +126,8 @@ func (a *App) CreateUpload(ctx context.Context, body []byte, filename, ip string
 		u.Token, u.DeleteToken, u.ObjectKey, u.ContentType, u.ContentHash, u.ByteSize,
 		u.Filename, u.IP, u.APITokenID, unix(u.ExpiresAt), unix(u.CreatedAt))
 	if err != nil {
-		// The object is already in the bucket; leave no orphan behind.
-		_ = a.Store.Delete(context.WithoutCancel(ctx), u.ObjectKey)
+		// The file is already on disk; leave no orphan behind.
+		_ = a.Store.Delete(u.ObjectKey)
 		return Upload{}, err
 	}
 	u.ID, _ = res.LastInsertId()
@@ -146,7 +146,7 @@ func (a *App) Purge(ctx context.Context, u Upload, action string, block bool) er
 			return err
 		}
 	}
-	if err := a.Store.Delete(ctx, u.ObjectKey); err != nil {
+	if err := a.Store.Delete(u.ObjectKey); err != nil {
 		// Leave the row alone so the next purge retries it.
 		return err
 	}

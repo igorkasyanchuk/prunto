@@ -17,11 +17,9 @@ docker run -p 3000:3000 -v prunto:/data ghcr.io/igorkasyanchuk/prunto
 ```
 
 That is the whole thing. No Postgres, no Redis, no object store, no account anywhere: SQLite
-lives in the volume, blobs sit beside it on disk and are served from `/blobs/:key`.
-
-Those URLs point at your own host, which GitHub cannot reach, so this mode is for trying the
-service and working on it. For real pull requests, point it at a bucket behind a CDN — see
-[COOLIFY.md](COOLIFY.md) for a deploy that takes about twenty minutes.
+lives in the volume, blobs sit beside it on disk, and this process streams them back from
+`/blobs/:key`. Point a public hostname at it and GitHub fetches the images like any other
+host — see [COOLIFY.md](COOLIFY.md).
 
 Create a token before the first upload:
 
@@ -31,19 +29,19 @@ docker exec -it <container> /prunto token "my laptop"
 
 ## Stack
 
-Go 1.24, SQLite, and an S3 client. That is the dependency list:
+Go and SQLite. That is the dependency list — one direct module:
 
 | | |
 | --- | --- |
 | HTTP, routing, templating | `net/http`, `html/template` — standard library |
 | Database | `modernc.org/sqlite` — pure Go, no cgo |
-| Object storage | `github.com/minio/minio-go/v7` |
+| Blob storage | the data volume, served by `net/http` |
 | Background work | a `time.Ticker` goroutine |
 | Rate limits and quotas | counter rows in SQLite |
 | Image sanitising | byte-walking, standard library only |
 
-No framework, no ORM, no job queue, no Redis, no libvips. `CGO_ENABLED=0` and a `FROM scratch`
-image, so the container holds one static binary, a CA bundle and your data volume.
+No framework, no ORM, no job queue, no Redis, no libvips, no bucket. `CGO_ENABLED=0` and a
+`FROM scratch` image, so the container holds one static binary and your data volume.
 
 ## Local development
 
@@ -53,8 +51,8 @@ go run . serve
 go run . token "my laptop"
 ```
 
-With no bucket configured, uploads go to `./data/blobs` and the whole flow works offline. The
-test suite never touches the network.
+Uploads go to `./data/blobs` and the whole flow works offline. The test suite never touches
+the network.
 
 ## API
 
@@ -104,7 +102,7 @@ is a hope.
   only and never reaches the object key.
 - **Images are stripped at the container level, not re-encoded.** Metadata chunks are dropped
   and everything past the format's end marker is truncated, so EXIF (and the GPS in it) and any
-  appended payload never reach the bucket. Animated GIFs keep every frame and keep looping —
+  appended payload never reach the volume. Animated GIFs keep every frame and keep looping —
   that is the whole point of pasting a screen recording into a PR.
 - A declared canvas over 50 megapixels is refused, read from the header.
 - 10 MB per file, enforced by `http.MaxBytesReader` as the body is read rather than after it
@@ -126,20 +124,23 @@ survive. This port does not, and the reasoning is worth stating plainly.
 
 Re-encoding does not eliminate decoder risk, it **relocates** it. To run libvips you feed
 attacker-controlled bytes to libpng, libjpeg-turbo, giflib and libwebp — the same libraries a
-browser uses — in your own process, beside your database and bucket credentials, without the
-browser's sandbox. Meanwhile the decompression bomb you then have to defend against exists
+browser uses — in your own process, beside your database, without the browser's sandbox. Meanwhile the decompression bomb you then have to defend against exists
 only because you decode.
 
-What re-encoding genuinely buys is protection that survives a misconfigured deployment. That is
-bought here instead by a **boot-time probe**: on startup the app writes a throwaway object,
-fetches it back through the configured CDN, and refuses to start if `nosniff`, the sandbox CSP
-or the content type are not what it asked for. A wrong header is a misconfiguration and stops
-the boot; a failed request is probably the network and only warns.
+What re-encoding genuinely buys is protection that survives a misconfigured deployment. Earlier
+versions bought that with a boot-time probe against the CDN in front of the bucket. There is no
+bucket and no CDN now: this process serves every blob itself, and sets the sniffed content type,
+`nosniff`, `Content-Disposition: inline` and a `sandbox` CSP on the response in the same handler
+that opens the file. There is no external configuration left to get wrong, which is a stronger
+guarantee than probing one, and a test asserts those headers.
 
-What is knowingly accepted: a payload hidden inside the compressed pixel stream passes through
-unchanged. The sniffed content type, `nosniff`, the sandbox CSP and the separate CDN origin are
-what stop a browser treating it as anything but an image — the same bet the Rails version
-already makes for every MP4 it stores untouched.
+What is knowingly accepted, and it is a real trade: a payload hidden inside the compressed pixel
+stream passes through unchanged, and blobs are served from **this app's own origin** rather than
+a separate hostname. The headers above are what stop a browser treating an upload as anything
+but an image — the same bet the Rails version already makes for every MP4 it stores untouched —
+but they are now the only thing standing between a stored file and the admin session on that
+origin. If you want the separation back without a bucket, point a second hostname at this same
+container and serve `/blobs` only from it.
 
 If that stops being enough, `Sanitize` in [`sanitize.go`](sanitize.go) is the only function
 that would change.
@@ -149,26 +150,19 @@ that would change.
 | Variable | Purpose |
 | --- | --- |
 | `PORT` | Listen port, default 3000 |
-| `DATA_DIR` | SQLite file and, with no bucket, the blobs. Default `./data` |
-| `PRUNTO_BASE_URL` | This instance's public origin. Required with a bucket configured |
-| `B2_BUCKET` | Bucket name |
-| `B2_KEY_ID` / `B2_APPLICATION_KEY` | Application key with read+write on that bucket |
-| `B2_ENDPOINT` | e.g. `https://s3.us-west-004.backblazeb2.com` |
-| `B2_REGION` | e.g. `us-west-004` |
-| `CDN_BASE_URL` | CDN hostname in front of the bucket, e.g. `https://cdn-prunto.igorkasyanchuk.com` |
+| `DATA_DIR` | SQLite file and the blobs. Default `./data` |
+| `PRUNTO_BASE_URL` | This instance's public origin. Every upload and delete URL is built on it |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | Gate `/admin`. Either unset means closed |
 | `TRUST_PROXY` | `cloudflare` when `CF-Connecting-IP` is authoritative, otherwise `none` |
 
-The five bucket variables are all-or-nothing: set every one or none. A half-configured bucket
-is the state where uploads succeed and the URLs point nowhere.
-
-The bucket, its endpoint and region, and the application keys all come from the
-[B2 buckets page](https://secure.backblaze.com/b2_buckets.htm).
+`PRUNTO_BASE_URL` is validated at boot as a bare origin — a path, query, fragment or
+credentials in it are refused by name. Get it wrong and every blob URL, delete URL and the
+admin `Origin` check point somewhere the browser will not follow.
 
 ## Deploying
 
-[COOLIFY.md](COOLIFY.md) has the full walkthrough: bucket, CDN, transform rules, environment,
-and the production checklist that has to be done before the instance is public.
+[COOLIFY.md](COOLIFY.md) has the walkthrough: one container, one volume, one hostname, and the
+production checklist that has to be done before the instance is public.
 
 ## Claude Code skill
 
@@ -181,7 +175,7 @@ curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md https://prunto.igorkasyanc
 export PRUNTO_API_TOKEN=your-token
 ```
 
-It is rendered rather than static because every URL in it — the API endpoint, the CDN, the
+It is rendered rather than static because every URL in it — the API endpoint, the blob host, the
 install command — comes from the instance's own configuration, so a self-hosted deployment
 hands out its own host and not someone else's.
 

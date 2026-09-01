@@ -51,7 +51,7 @@
     <tr><th>File</th><th>Type</th><th>Size</th><th>Token</th><th>Expires</th><th></th></tr>
     {{range .Uploads}}
     <tr>
-      <td class="mono"><a href="{{$.CDNBaseURL}}/{{.ObjectKey}}" rel="noreferrer">{{.ObjectKey}}</a></td>
+      <td class="mono"><a href="{{$.BlobBaseURL}}/{{.ObjectKey}}" rel="noreferrer">{{.ObjectKey}}</a></td>
       <td>{{.ContentType}}</td>
       <td>{{bytes .ByteSize}}</td>
       <td class="mono">{{if .APITokenID.Valid}}#{{.APITokenID.Int64}}{{else}}&mdash;{{end}}</td>

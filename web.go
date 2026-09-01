@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"database/sql"
 	"embed"
 	"html/template"
 	"io/fs"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -43,13 +41,12 @@ var skillTemplate = texttemplate.Must(texttemplate.ParseFS(templateDir, "templat
 // so a self-hosted instance hands out its own host and never someone else's.
 func (a *App) view() map[string]any {
 	return map[string]any{
-		"BaseURL":    a.Config.BaseURL,
-		"CDNBaseURL": a.Config.CDNBaseURL,
-		"SkillURL":   a.Config.BaseURL + "/prunto-screenshot/SKILL.md",
-		"Retention":  humanDuration(DefaultRetention),
-		"MaxMB":      MaxBytes >> 20,
-		"Accept":     acceptAttribute(),
-		"Local":      a.Config.Local(),
+		"BaseURL":     a.Config.BaseURL,
+		"BlobBaseURL": a.Config.BlobBaseURL(),
+		"SkillURL":    a.Config.BaseURL + "/prunto-screenshot/SKILL.md",
+		"Retention":   humanDuration(DefaultRetention),
+		"MaxMB":       MaxBytes >> 20,
+		"Accept":      acceptAttribute(),
 	}
 }
 
@@ -81,12 +78,11 @@ func plural(n int, noun string) string {
 
 func (a *App) render(w http.ResponseWriter, name string, data map[string]any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// The drop page posts to this app and loads nothing but the preview off-origin, and that
-	// one comes from the CDN the blobs are served from.
-	cdn := a.Config.CDNOrigin()
+	// Blobs are served from this same origin now, so 'self' covers the drop page's preview and
+	// the policy needs no host in it at all.
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; img-src 'self' blob: data: "+cdn+
-			"; media-src 'self' blob: "+cdn+"; base-uri 'none'; form-action 'self'")
+		"default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; "+
+			"base-uri 'none'; form-action 'self'")
 	if err := pages.ExecuteTemplate(w, name, data); err != nil {
 		a.Log.Printf("rendering %s: %v", name, err)
 	}
@@ -97,7 +93,7 @@ func (a *App) handleDropPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSkill serves the Claude Code skill, rendered rather than static because every URL in
-// it - the API endpoint, the CDN, the install command - comes from this instance's own
+// it - the API endpoint, the blob host, the install command - comes from this instance's own
 // configuration. Anyone using an instance can install the skill without cloning the repo.
 func (a *App) handleSkill(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
@@ -163,9 +159,11 @@ func (a *App) handleCreateAbuseReport(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "abuse.html", view)
 }
 
-// handleLocalBlob is the development stand-in for the CDN, present only when no bucket is
-// configured. It sets the headers a Transform Rule would set in front of a real bucket.
-func (a *App) handleLocalBlob(w http.ResponseWriter, r *http.Request) {
+// handleBlob serves an upload off the data volume. This is the whole delivery path now that
+// there is no bucket, so it carries the headers a CDN Transform Rule used to: the content type
+// recorded at upload rather than anything sniffed from the bytes, and a sandbox CSP, because
+// these are attacker-controlled bytes on this app's own origin.
+func (a *App) handleBlob(w http.ResponseWriter, r *http.Request) {
 	key := filepath.Base(r.PathValue("key"))
 	var contentType string
 	if err := a.DB.QueryRowContext(r.Context(),
@@ -176,17 +174,21 @@ func (a *App) handleLocalBlob(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	body, err := os.ReadFile(filepath.Join(a.Config.DataDir, "blobs", key))
+	// Streamed, not read into memory: a 10 MB video times a handful of concurrent readers is
+	// real memory on a box where the whole process otherwise sits in single-digit MB.
+	f, err := a.Store.Open(key)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
+	defer f.Close()
+
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", "inline")
 	w.Header().Set("Content-Security-Policy", "sandbox")
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	// ServeContent rather than Write, so Range requests work: a browser seeking within a
+	// ServeContent rather than io.Copy, so Range requests work: a browser seeking within a
 	// <video> asks for a byte range, and a handler that answers 200 with the whole body
-	// leaves the scrubber dead.
-	http.ServeContent(w, r, key, time.Time{}, bytes.NewReader(body))
+	// leaves the scrubber dead. It needs a ReadSeeker, which is what the file already is.
+	http.ServeContent(w, r, key, time.Time{}, f)
 }

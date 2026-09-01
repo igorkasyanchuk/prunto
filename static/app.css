@@ -1,11 +1,11 @@
 :root {
   color-scheme: light dark;
   --bg: #fbfbfa; --fg: #1a1a19; --muted: #6b6b68; --line: #dedcd6;
-  --accent: #2f6f4f; --warn: #8a4b1f; --err: #a32020; --card: #fff;
+  --accent: #2f6f4f; --err: #a32020; --card: #fff;
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #141413; --fg: #eceae4; --muted: #9a9892; --line: #33322e;
-          --accent: #7fbf9a; --warn: #d19a63; --err: #e08585; --card: #1c1b19; }
+          --accent: #7fbf9a; --err: #e08585; --card: #1c1b19; }
 }
 * { box-sizing: border-box; }
 body {
@@ -18,7 +18,6 @@ h1 { font-size: 1.6rem; margin: 0 0 .4rem; letter-spacing: -.02em; }
 h2 { font-size: 1.05rem; margin: 2.5rem 0 .6rem; }
 .lede { color: var(--muted); margin: 0 0 1.75rem; }
 .limits, .muted { color: var(--muted); font-size: .85rem; }
-.warn { color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: .6rem .8rem; font-size: .85rem; }
 .error { color: var(--err); }
 .new-token { background: var(--card); border: 1px solid var(--accent); border-radius: 8px; padding: .7rem .9rem; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }

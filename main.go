@@ -18,7 +18,7 @@ import (
 type App struct {
 	Config Config
 	DB     *sql.DB
-	Store  Store
+	Store  *Store
 	Log    *log.Logger
 }
 
@@ -41,11 +41,7 @@ func main() {
 	}
 	defer db.Close()
 
-	store, err := NewStore(cfg)
-	if err != nil {
-		logger.Fatalf("storage: %v", err)
-	}
-	app := &App{Config: cfg, DB: db, Store: store, Log: logger}
+	app := &App{Config: cfg, DB: db, Store: NewStore(cfg), Log: logger}
 
 	// Subcommands. `prunto token "my laptop"` is the whole administrative surface that has to
 	// exist before the first upload.
@@ -59,17 +55,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if !cfg.Local() {
-		check, cancel := context.WithTimeout(ctx, 30*time.Second)
-		err := VerifyCDNHeaders(check, store)
-		cancel()
-		if err != nil {
-			logger.Fatalf("%v", err)
-		}
-	} else {
-		logger.Printf("no bucket configured: blobs are on disk under %s and served from /blobs", cfg.DataDir)
-		logger.Printf("URLs will point at %s, which GitHub cannot reach - this mode is for local work", cfg.BaseURL)
-	}
+	logger.Printf("blobs are on disk under %s and served from %s", cfg.DataDir, cfg.BlobBaseURL())
 	if !cfg.AdminEnabled() {
 		logger.Printf("ADMIN_USER/ADMIN_PASSWORD unset: /admin is closed")
 	}
@@ -224,14 +210,12 @@ func (a *App) Routes() http.Handler {
 		w.Write([]byte("User-agent: *\nDisallow: /\n"))
 	})
 
-	if a.Config.Local() {
-		mux.HandleFunc("GET /blobs/{key}", a.handleLocalBlob)
-	}
+	mux.HandleFunc("GET /blobs/{key}", a.handleBlob)
 
 	return a.withSecurityHeaders(mux)
 }
 
-// withSecurityHeaders sets on this app's own responses what a Transform Rule sets on the CDN's.
+// withSecurityHeaders sets on every response what a CDN in front of a bucket used to.
 func (a *App) withSecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()

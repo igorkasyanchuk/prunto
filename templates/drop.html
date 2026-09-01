@@ -17,13 +17,6 @@
     Uploads are deleted after {{.Retention}}.
   </p>
 
-  {{if .Local}}
-  <p class="warn">
-    No bucket is configured, so files are served from this host. GitHub cannot reach these
-    URLs &mdash; this mode is for working on the service, not for real pull requests.
-  </p>
-  {{end}}
-
   <label class="token">
     API token
     <input type="password" id="token" placeholder="prunto_..." autocomplete="off" spellcheck="false">

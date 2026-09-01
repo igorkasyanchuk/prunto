@@ -44,8 +44,8 @@ Returns:
 
 ```json
 {
-  "url": "{{.CDNBaseURL}}/AbC123xyz789.png",
-  "markdown": "![]({{.CDNBaseURL}}/AbC123xyz789.png)",
+  "url": "{{.BlobBaseURL}}/AbC123xyz789.png",
+  "markdown": "![]({{.BlobBaseURL}}/AbC123xyz789.png)",
   "content_type": "image/png",
   "delete_url": "{{.BaseURL}}/api/v1/uploads/9f3c...",
   "expires_at": "2026-09-14T10:00:00Z",

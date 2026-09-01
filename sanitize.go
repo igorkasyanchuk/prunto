@@ -12,19 +12,19 @@ import (
 // The type is decided by magic bytes, never by the filename or the client's declared content
 // type. What survives is then rebuilt at the container level: metadata chunks are dropped and
 // everything past the format's end marker is truncated, so EXIF (and the GPS in it) and any
-// appended payload never reach the bucket.
+// appended payload never reach the volume.
 //
 // ponytail: no libvips, no re-encode. Decoding attacker-controlled bytes in order to protect
 // against attacker-controlled bytes means running the same C codecs a browser would - only in
-// this process, beside the database and bucket credentials, and without the browser's sandbox.
+// this process, beside the database, and without the browser's sandbox.
 // Byte-walking has none of that surface, needs no cgo, and cannot be handed a decompression
 // bomb. What it does not do is neutralise a payload hidden inside the compressed pixel stream:
-// nosniff, the sniffed content type and the separate CDN origin are what stand between that
+// nosniff, the sniffed content type and the sandbox CSP are what stand between that
 // and a browser, which is the same bet already made for video. Swap in a real re-encode here
 // if that stops being enough - Sanitize is the only thing that would change.
 
 // MaxPixels bounds the declared canvas. Nothing here decodes, so this is not protecting a
-// decoder of ours; it keeps absurd canvases out of the bucket and out of viewers.
+// decoder of ours; it keeps absurd canvases off the volume and out of viewers.
 const MaxPixels = 50_000_000
 
 // tooManyPixels compares by division rather than multiplying. PNG dimensions are uint32, and a
@@ -144,7 +144,7 @@ func Sanitize(b []byte) ([]byte, Kind, error) {
 	if kind.Video {
 		// ponytail: containers pass through unchanged. Demuxing MP4 and WebM to rebuild them
 		// is a second parser each for bytes no browser will execute; the sniffed content type,
-		// nosniff and the separate CDN origin are the controls that matter here. Pipe uploads
+		// nosniff and the sandbox CSP are the controls that matter here. Pipe uploads
 		// through ffmpeg if that stops being enough.
 		return b, kind, nil
 	}

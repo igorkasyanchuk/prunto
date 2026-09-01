@@ -34,11 +34,7 @@ func newTestApp(t *testing.T) *App {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	store, err := NewStore(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &App{Config: cfg, DB: db, Store: store, Log: log.New(io.Discard, "", 0)}
+	return &App{Config: cfg, DB: db, Store: NewStore(cfg), Log: log.New(io.Discard, "", 0)}
 }
 
 func uploadRequest(t *testing.T, body []byte, filename, token string, fields map[string]string) *http.Request {
@@ -562,27 +558,98 @@ func TestLocalBlobServesRanges(t *testing.T) {
 	}
 }
 
-// The drop page previews the upload straight off the CDN, which is a different origin in every
-// real deployment. A CSP that only names 'self' leaves that preview blocked in production and
-// working locally, where the CDN is this host.
-func TestDropPageCSPNamesTheCDNOrigin(t *testing.T) {
+// Blobs are served from this app's own origin, so the drop page's preview is covered by 'self'
+// and the policy should name no host at all - a stray host here would be a leftover.
+func TestDropPageCSPIsSelfOnly(t *testing.T) {
 	app := newTestApp(t)
-	app.Config.CDNBaseURL = "https://cdn.example.test/blobs"
 
 	w := httptest.NewRecorder()
 	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/", nil))
 
 	csp := w.Header().Get("Content-Security-Policy")
 	for _, want := range []string{
-		"img-src 'self' blob: data: https://cdn.example.test;",
-		"media-src 'self' blob: https://cdn.example.test;",
+		"img-src 'self' blob: data:;",
+		"media-src 'self' blob:;",
+		"default-src 'self'",
+		"base-uri 'none'",
 	} {
 		if !strings.Contains(csp, want) {
 			t.Fatalf("CSP %q does not contain %q", csp, want)
 		}
 	}
-	if strings.Contains(csp, "/blobs") {
-		t.Fatalf("CSP carries a path, which only matches that exact path: %q", csp)
+	if strings.Contains(csp, "http") {
+		t.Fatalf("CSP names a host, but blobs are same-origin now: %q", csp)
+	}
+}
+
+// The bytes come back off the volume with the content type recorded at upload, sandboxed, and
+// honouring Range - a browser scrubbing a <video> depends on the last one.
+func TestBlobIsServedFromDisk(t *testing.T) {
+	app := newTestApp(t)
+	token, _ := CreateToken(context.Background(), app.DB, "test")
+	png := samplePNG(t, 8, 8)
+
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, uploadRequest(t, png, "shot.png", token, nil))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("upload = %d", w.Code)
+	}
+	var body struct{ URL string }
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(body.URL, "http://prunto.test/blobs/") {
+		t.Fatalf("url = %q, want it served from this origin", body.URL)
+	}
+
+	get := func(headers map[string]string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, body.URL, nil)
+		for k, v := range headers {
+			r.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		app.Routes().ServeHTTP(rec, r)
+		return rec
+	}
+
+	rec := get(nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("blob = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "image/png" {
+		t.Errorf("Content-Type = %q, want image/png", got)
+	}
+	if got := rec.Header().Get("Content-Security-Policy"); got != "sandbox" {
+		t.Errorf("blob CSP = %q, want sandbox", got)
+	}
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("blob nosniff = %q", got)
+	}
+	// Not the uploaded bytes: those are re-encoded to strip metadata. What matters is that the
+	// handler streams back exactly what is on the volume.
+	key := strings.TrimPrefix(body.URL, "http://prunto.test/blobs/")
+	onDisk, err := os.ReadFile(filepath.Join(app.Config.DataDir, "blobs", key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), onDisk) {
+		t.Errorf("served %d bytes, but the file on disk is %d", rec.Body.Len(), len(onDisk))
+	}
+	if !bytes.HasPrefix(onDisk, []byte("\x89PNG")) {
+		t.Error("what landed on the volume is not a PNG")
+	}
+
+	if rec := get(map[string]string{"Range": "bytes=0-3"}); rec.Code != http.StatusPartialContent {
+		t.Errorf("range request = %d, want 206", rec.Code)
+	}
+
+	// A key that is not in the database is a 404 even if something sits on disk under it.
+	rec = get(nil)
+	if _, err := app.DB.Exec(`DELETE FROM uploads`); err != nil {
+		t.Fatal(err)
+	}
+	if rec := get(nil); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown blob = %d, want 404", rec.Code)
 	}
 }
 
@@ -637,7 +704,7 @@ func TestNewTokenIsNeverInTheURL(t *testing.T) {
 	}
 }
 
-// PRUNTO_BASE_URL is compared against an Origin header and used to derive the CSP's CDN source,
+// PRUNTO_BASE_URL is compared against an Origin header and is what every blob URL is built on,
 // so a value that is not a bare origin has to stop the boot rather than silently disable both.
 func TestBaseURLMustBeABareOrigin(t *testing.T) {
 	notOrigins := []string{
@@ -659,7 +726,7 @@ func TestBaseURLMustBeABareOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.CDNOrigin() != "https://prunto.test" {
-		t.Fatalf("CDNOrigin = %q", cfg.CDNOrigin())
+	if cfg.BlobBaseURL() != "https://prunto.test/blobs" {
+		t.Fatalf("BlobBaseURL = %q", cfg.BlobBaseURL())
 	}
 }

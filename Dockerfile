@@ -7,7 +7,6 @@
 FROM golang:1.25-alpine AS build
 
 WORKDIR /src
-RUN apk add --no-cache ca-certificates
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -20,8 +19,8 @@ RUN mkdir -p /data && chown 65532:65532 /data
 
 FROM scratch
 
-# Needed to reach the bucket and to fetch the CDN header probe at boot.
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+# No CA bundle: with the bucket gone this process makes no outbound request at all, so the
+# image is the binary and the data directory and nothing else.
 COPY --from=build --chown=65532:65532 /data /data
 COPY --from=build /prunto /prunto
 

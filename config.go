@@ -34,15 +34,6 @@ type Config struct {
 	DataDir string
 	BaseURL string // this app's own public origin, used for delete URLs and the skill
 
-	// Storage. With no bucket configured, blobs are written under DataDir and served from
-	// /blobs/:key by this process - enough to run the whole flow with no account anywhere.
-	Bucket     string
-	KeyID      string
-	AppKey     string
-	Endpoint   string
-	Region     string
-	CDNBaseURL string
-
 	AdminUser     string
 	AdminPassword string
 
@@ -58,12 +49,6 @@ func LoadConfig() (Config, error) {
 		// predate the rename; drop it (and main's deprecation warning) once those have
 		// moved to PRUNTO_BASE_URL.
 		BaseURL:       strings.TrimSuffix(env("PRUNTO_BASE_URL", env("PRIITO_BASE_URL", "")), "/"),
-		Bucket:        env("B2_BUCKET", ""),
-		KeyID:         env("B2_KEY_ID", ""),
-		AppKey:        env("B2_APPLICATION_KEY", ""),
-		Endpoint:      env("B2_ENDPOINT", ""),
-		Region:        env("B2_REGION", ""),
-		CDNBaseURL:    strings.TrimSuffix(env("CDN_BASE_URL", ""), "/"),
 		AdminUser:     env("ADMIN_USER", ""),
 		AdminPassword: env("ADMIN_PASSWORD", ""),
 		TrustProxy:    env("TRUST_PROXY", "none"),
@@ -73,47 +58,21 @@ func LoadConfig() (Config, error) {
 		return c, err
 	}
 
-	// Either every bucket variable is set or none is. A half-configured bucket is the state
-	// where uploads succeed and the URLs point nowhere.
-	set := 0
-	for _, v := range []string{c.Bucket, c.KeyID, c.AppKey, c.Endpoint, c.Region, c.CDNBaseURL} {
-		if v != "" {
-			set++
-		}
-	}
-	if set != 0 && set != 6 {
-		return c, fmt.Errorf("set all of B2_BUCKET, B2_KEY_ID, B2_APPLICATION_KEY, B2_ENDPOINT, B2_REGION and CDN_BASE_URL, or none of them")
-	}
-
 	if c.BaseURL == "" {
-		if c.Local() {
-			c.BaseURL = "http://localhost" + c.Addr
-		} else {
-			return c, fmt.Errorf("PRUNTO_BASE_URL is required: it is the public origin this instance hands out in delete URLs and in the skill")
-		}
+		c.BaseURL = "http://localhost" + c.Addr
 	}
 
 	// Scheme and host, nothing else. Every failure downstream of a looser value is silent: the
 	// admin CSRF check compares this against an Origin header, which carries no path or query,
-	// so admin POSTs 403 forever; the delete URLs are built by concatenation, so anything after
-	// the host swallows the path glued onto it; and CDNOrigin below goes empty on a value with
-	// no scheme, which drops the CDN from the drop page's CSP and blocks the preview.
+	// so admin POSTs 403 forever, and the delete and blob URLs are built by concatenation, so
+	// anything after the host swallows the path glued onto it.
 	u, err := url.Parse(c.BaseURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
 		u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 		return c, fmt.Errorf("PRUNTO_BASE_URL must be a bare origin such as https://prunto.example.com, got %q", c.BaseURL)
 	}
-
-	if c.Local() {
-		c.CDNBaseURL = c.BaseURL + "/blobs"
-	} else if u, err := url.Parse(c.CDNBaseURL); err != nil || u.Scheme == "" || u.Host == "" {
-		return c, fmt.Errorf("CDN_BASE_URL must be an absolute URL such as https://cdn.example.com, got %q", c.CDNBaseURL)
-	}
 	return c, nil
 }
-
-// Local reports whether blobs live on disk rather than in a bucket.
-func (c Config) Local() bool { return c.Bucket == "" }
 
 // AdminEnabled reports whether /admin will answer at all. An unconfigured admin is closed,
 // not open.
@@ -121,16 +80,9 @@ func (c Config) AdminEnabled() bool { return c.AdminUser != "" && c.AdminPasswor
 
 func (c Config) DBPath() string { return filepath.Join(c.DataDir, "prunto.db") }
 
-// CDNOrigin is the scheme://host blobs are served from, with no path. The drop page previews an
-// upload straight off it, so the page's CSP has to name the origin or the browser blocks the
-// preview - a CSP source with a path only matches that exact path, which CDNBaseURL is not.
-func (c Config) CDNOrigin() string {
-	u, err := url.Parse(c.CDNBaseURL)
-	if err != nil || u.Host == "" {
-		return ""
-	}
-	return u.Scheme + "://" + u.Host
-}
+// BlobBaseURL is where uploads are served from. Blobs share this app's origin, so the drop
+// page's CSP needs no extra source for the preview.
+func (c Config) BlobBaseURL() string { return c.BaseURL + "/blobs" }
 
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {

@@ -27,7 +27,7 @@ func (a *App) StartPurge(ctx context.Context, every time.Duration) {
 
 // PurgeExpired deletes objects whose time is up, then trims the audit trail.
 //
-// A row whose object fails to delete is left alone so the next sweep retries it - the bucket
+// A row whose file fails to delete is left alone so the next sweep retries it - the volume
 // erroring must not silently orphan bytes we have stopped tracking.
 func (a *App) PurgeExpired(ctx context.Context) {
 	rows, err := a.DB.QueryContext(ctx,
@@ -46,7 +46,7 @@ func (a *App) PurgeExpired(ctx context.Context) {
 		ids = append(ids, id)
 	}
 	// A sweep that stopped early is not a sweep that found nothing; say so rather than
-	// leaving expired objects in the bucket with a silent log.
+	// leaving expired files on the volume with a silent log.
 	if err := rows.Err(); err != nil {
 		a.Log.Printf("purge: the expiry list ended early: %v", err)
 	}
