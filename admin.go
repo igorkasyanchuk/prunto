@@ -21,12 +21,16 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 				http.StatusForbidden)
 			return
 		}
-		// Basic auth is replayed by the browser on cross-site POSTs, so it is a CSRF carrier
-		// on its own. A same-origin check is the whole defence, with no token to thread
-		// through forms.
-		if r.Method == http.MethodPost && !a.sameOrigin(r) {
-			http.Error(w, "Bad origin", http.StatusForbidden)
-			return
+		if r.Method == http.MethodPost {
+			if !a.notCrossSite(r) {
+				http.Error(w, "Bad origin", http.StatusForbidden)
+				return
+			}
+			if !a.csrfTokenValid(r) {
+				http.Error(w, "That form is stale. Reload /admin and try again.",
+					http.StatusForbidden)
+				return
+			}
 		}
 		user, pass, ok := r.BasicAuth()
 		userOK := subtle.ConstantTimeCompare([]byte(user), []byte(a.Config.AdminUser)) == 1
@@ -40,30 +44,64 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// sameOrigin reports whether a state-changing request came from this instance's own pages.
-//
-// Origin is the strongest signal but not a universal one: WebKit omits it on same-origin form
-// submissions, so requiring it outright locks Safari out of every admin action while looking
-// like a misconfigured BaseURL. Fall back to Sec-Fetch-Site, then to Referer, and refuse a
-// request carrying none of the three — a cross-site POST always carries at least one of them,
-// pointing somewhere else.
-func (a *App) sameOrigin(r *http.Request) bool {
-	if o := r.Header.Get("Origin"); o != "" {
-		return o == a.Config.BaseURL
+// Basic auth is replayed by the browser on cross-site POSTs, so it is a CSRF carrier on its
+// own and the dashboard needs its own check. Request headers turned out to be the wrong place
+// to look for one: WebKit omits Origin on same-origin form submissions, Sec-Fetch-Site is
+// absent on older browsers, and Referer cannot be the fallback because withSecurityHeaders
+// sends `Referrer-Policy: no-referrer` on the very page holding the form. A browser with none
+// of the three then looks identical to an attacker. So the token below is the actual check,
+// and the header tests are kept only to reject what they can prove is cross-site.
+
+// notCrossSite rejects a request whose own headers say it came from somewhere else. It never
+// accepts on its own - a request with no headers at all still has to carry the CSRF token.
+func (a *App) notCrossSite(r *http.Request) bool {
+	if o := r.Header.Get("Origin"); o != "" && o != a.Config.BaseURL {
+		return false
 	}
 	switch r.Header.Get("Sec-Fetch-Site") {
-	case "same-origin", "none":
+	case "", "same-origin", "none":
 		return true
-	case "":
-		// No fetch metadata from this browser; fall through to Referer.
 	default:
 		// cross-site, or same-site from another host on the registrable domain.
 		return false
 	}
-	if ref := r.Header.Get("Referer"); ref != "" {
-		return ref == a.Config.BaseURL || strings.HasPrefix(ref, a.Config.BaseURL+"/")
+}
+
+// csrfCookie holds the double-submit token. It is not a session: it only has to be a value an
+// attacker's page cannot read (it is HttpOnly and same-origin) and therefore cannot echo back
+// in a form field.
+const csrfCookie = "prunto_csrf"
+
+// issueCSRFToken returns the token for this browser, minting and setting one if needed. The
+// dashboard calls it on every render so a form is never served without a matching cookie.
+func (a *App) issueCSRFToken(w http.ResponseWriter, r *http.Request) string {
+	if c, err := r.Cookie(csrfCookie); err == nil && c.Value != "" {
+		return c.Value
 	}
-	return false
+	token := randToken(32)
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookie,
+		Value:    token,
+		Path:     "/admin",
+		MaxAge:   12 * 60 * 60,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   strings.HasPrefix(a.Config.BaseURL, "https://"),
+	})
+	return token
+}
+
+func (a *App) csrfTokenValid(r *http.Request) bool {
+	c, err := r.Cookie(csrfCookie)
+	if err != nil || c.Value == "" {
+		return false
+	}
+	// ParseForm here rather than in the handler: the guard has to see the field before the
+	// action runs, and ParseForm is idempotent.
+	if err := r.ParseForm(); err != nil {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(c.Value), []byte(r.PostFormValue("csrf"))) == 1
 }
 
 type adminReport struct {
@@ -133,6 +171,7 @@ func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request) {
 	view["Events"] = events
 	view["Blocked"] = blocked
 	view["NewToken"] = a.takeNewToken(w, r)
+	view["CSRF"] = a.issueCSRFToken(w, r)
 	a.render(w, "admin.html", view)
 }
 

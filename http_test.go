@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -202,16 +203,49 @@ func TestAdminIsClosedWhenUnconfigured(t *testing.T) {
 	}
 }
 
+// adminSession does what a browser does before it can submit an admin form: load /admin, keep
+// the CSRF cookie, and read the token the page embedded in every form.
+func adminSession(t *testing.T, handler http.Handler) (*http.Cookie, string) {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
+	r.SetBasicAuth("admin", "hunter2")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("loading /admin = %d", w.Code)
+	}
+	var cookie *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == csrfCookie {
+			cookie = c
+		}
+	}
+	if cookie == nil {
+		t.Fatal("/admin set no CSRF cookie, so no form on it can be submitted")
+	}
+	m := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindStringSubmatch(w.Body.String())
+	if m == nil {
+		t.Fatal("no CSRF field rendered into the admin forms")
+	}
+	if m[1] != cookie.Value {
+		t.Fatalf("the form token %q does not match the cookie %q", m[1], cookie.Value)
+	}
+	return cookie, m[1]
+}
+
 func TestAdminAuthAndOrigin(t *testing.T) {
 	app := newTestApp(t)
 	handler := app.Routes()
+
+	cookie, token := adminSession(t, handler)
 
 	do := func(method, origin string, auth bool) int {
 		var r *http.Request
 		if method == http.MethodPost {
 			r = httptest.NewRequest(method, "http://prunto.test/admin/actions",
-				strings.NewReader("do=handle&id=1"))
+				strings.NewReader("do=handle&id=1&csrf="+token))
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			r.AddCookie(cookie)
 		} else {
 			r = httptest.NewRequest(method, "http://prunto.test/admin", nil)
 		}
@@ -270,18 +304,24 @@ func TestFaviconIsServed(t *testing.T) {
 	}
 }
 
-// WebKit omits Origin on same-origin form submissions, so the dashboard has to recognise its
-// own pages by Sec-Fetch-Site or Referer too - and still refuse everything cross-site.
-func TestAdminOriginFallbacks(t *testing.T) {
+// The dashboard cannot decide CSRF from request headers: WebKit omits Origin on same-origin
+// form posts, older browsers send no Sec-Fetch-Site, and Referer is suppressed by this app's
+// own Referrer-Policy: no-referrer. A real browser can therefore arrive with none of the three
+// and must still work - the CSRF token is what actually authorises the POST.
+func TestAdminActionNeedsTheCSRFToken(t *testing.T) {
 	app := newTestApp(t)
 	handler := app.Routes()
+	cookie, token := adminSession(t, handler)
 
-	post := func(headers map[string]string) int {
+	post := func(body string, cookies []*http.Cookie, headers map[string]string) int {
 		r := httptest.NewRequest(http.MethodPost, "http://prunto.test/admin/actions",
-			strings.NewReader("do=handle&id=1"))
+			strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		for k, v := range headers {
 			r.Header.Set(k, v)
+		}
+		for _, c := range cookies {
+			r.AddCookie(c)
 		}
 		r.SetBasicAuth("admin", "hunter2")
 		w := httptest.NewRecorder()
@@ -289,37 +329,40 @@ func TestAdminOriginFallbacks(t *testing.T) {
 		return w.Code
 	}
 
-	allowed := []struct {
-		name    string
-		headers map[string]string
-	}{
-		{"sec-fetch-site same-origin", map[string]string{"Sec-Fetch-Site": "same-origin"}},
-		{"sec-fetch-site none", map[string]string{"Sec-Fetch-Site": "none"}},
-		{"referer on this origin", map[string]string{"Referer": "http://prunto.test/admin"}},
-		{"referer is the origin itself", map[string]string{"Referer": "http://prunto.test"}},
+	good := "do=handle&id=1&csrf=" + token
+	all := []*http.Cookie{cookie}
+
+	// A browser that sends no Origin, no Sec-Fetch-Site and no Referer still gets through.
+	if got := post(good, all, nil); got != http.StatusSeeOther {
+		t.Errorf("token with no headers at all = %d, want 303", got)
 	}
-	for _, c := range allowed {
-		if got := post(c.headers); got != http.StatusSeeOther {
-			t.Errorf("%s = %d, want 303", c.name, got)
+	for _, h := range []map[string]string{
+		{"Sec-Fetch-Site": "same-origin"},
+		{"Sec-Fetch-Site": "none"},
+		{"Origin": "http://prunto.test"},
+	} {
+		if got := post(good, all, h); got != http.StatusSeeOther {
+			t.Errorf("token with %v = %d, want 303", h, got)
 		}
 	}
 
+	// Everything an attacker can actually mount is still refused.
 	refused := []struct {
 		name    string
+		body    string
+		cookies []*http.Cookie
 		headers map[string]string
 	}{
-		{"no signal at all", nil},
-		{"cross-site fetch metadata", map[string]string{"Sec-Fetch-Site": "cross-site"}},
-		{"same-site is still another origin", map[string]string{"Sec-Fetch-Site": "same-site"}},
-		{"foreign referer", map[string]string{"Referer": "http://evil.test/x"}},
-		{"referer only prefix-matches the host", map[string]string{"Referer": "http://prunto.test.evil.test/x"}},
-		{"origin wins over a friendly referer", map[string]string{
-			"Origin": "http://evil.test", "Referer": "http://prunto.test/admin"}},
-		{"fetch metadata wins over a friendly referer", map[string]string{
-			"Sec-Fetch-Site": "cross-site", "Referer": "http://prunto.test/admin"}},
+		{"no token at all", "do=handle&id=1", all, nil},
+		{"wrong token", "do=handle&id=1&csrf=" + randToken(32), all, nil},
+		{"empty token", "do=handle&id=1&csrf=", all, nil},
+		{"token but no cookie to match it", good, nil, nil},
+		{"cross-site origin, valid token", good, all, map[string]string{"Origin": "http://evil.test"}},
+		{"cross-site fetch metadata, valid token", good, all, map[string]string{"Sec-Fetch-Site": "cross-site"}},
+		{"same-site is still another host", good, all, map[string]string{"Sec-Fetch-Site": "same-site"}},
 	}
 	for _, c := range refused {
-		if got := post(c.headers); got != http.StatusForbidden {
+		if got := post(c.body, c.cookies, c.headers); got != http.StatusForbidden {
 			t.Errorf("%s = %d, want 403", c.name, got)
 		}
 	}
@@ -667,10 +710,13 @@ func TestNewTokenIsNeverInTheURL(t *testing.T) {
 	app := newTestApp(t)
 	handler := app.Routes()
 
-	form := strings.NewReader("do=create&label=laptop")
+	cookie, csrf := adminSession(t, handler)
+
+	form := strings.NewReader("do=create&label=laptop&csrf=" + csrf)
 	r := httptest.NewRequest(http.MethodPost, "http://prunto.test/admin/actions", form)
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Origin", app.Config.BaseURL)
+	r.AddCookie(cookie)
 	r.SetBasicAuth("admin", "hunter2")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
