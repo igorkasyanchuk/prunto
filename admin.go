@@ -55,7 +55,13 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 // notCrossSite rejects a request whose own headers say it came from somewhere else. It never
 // accepts on its own - a request with no headers at all still has to carry the CSRF token.
 func (a *App) notCrossSite(r *http.Request) bool {
-	if o := r.Header.Get("Origin"); o != "" && o != a.Config.BaseURL {
+	// "null" is a withheld origin, not a foreign one. withSecurityHeaders sends
+	// Referrer-Policy: no-referrer, and on a form navigation that makes the browser serialise
+	// Origin as null - so the dashboard's own forms arrive this way and rejecting it locks the
+	// admin out of every button. It proves nothing in either direction, since an attacker's
+	// page can set the same policy and produce the same value, so treat it as absent and let
+	// the CSRF token below be the thing that decides.
+	if o := r.Header.Get("Origin"); o != "" && o != "null" && o != a.Config.BaseURL {
 		return false
 	}
 	switch r.Header.Get("Sec-Fetch-Site") {

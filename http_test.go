@@ -340,6 +340,10 @@ func TestAdminActionNeedsTheCSRFToken(t *testing.T) {
 		{"Sec-Fetch-Site": "same-origin"},
 		{"Sec-Fetch-Site": "none"},
 		{"Origin": "http://prunto.test"},
+		// What a real form navigation actually sends from a page carrying this app's own
+		// Referrer-Policy: no-referrer - the browser opaques the origin to "null".
+		{"Origin": "null", "Sec-Fetch-Site": "same-origin"},
+		{"Origin": "null"},
 	} {
 		if got := post(good, all, h); got != http.StatusSeeOther {
 			t.Errorf("token with %v = %d, want 303", h, got)
@@ -358,6 +362,9 @@ func TestAdminActionNeedsTheCSRFToken(t *testing.T) {
 		{"empty token", "do=handle&id=1&csrf=", all, nil},
 		{"token but no cookie to match it", good, nil, nil},
 		{"cross-site origin, valid token", good, all, map[string]string{"Origin": "http://evil.test"}},
+		// An attacker can produce Origin: null too, so it must not be a free pass: with no
+		// matching cookie the token is unforgeable and the request still dies here.
+		{"null origin without the cookie", good, nil, map[string]string{"Origin": "null"}},
 		{"cross-site fetch metadata, valid token", good, all, map[string]string{"Sec-Fetch-Site": "cross-site"}},
 		{"same-site is still another host", good, all, map[string]string{"Sec-Fetch-Site": "same-site"}},
 	}
