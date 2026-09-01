@@ -66,7 +66,7 @@ func uploadRequest(t *testing.T, body []byte, filename, token string, fields map
 func TestUploadRoundTrip(t *testing.T) {
 	app := newTestApp(t)
 	handler := app.Routes()
-	token, err := MintToken(context.Background(), app.DB, "test")
+	token, err := CreateToken(context.Background(), app.DB, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestUploadRequiresAToken(t *testing.T) {
 // Referer headers, so it is refused rather than quietly ignored.
 func TestTokenInQueryStringIsRefused(t *testing.T) {
 	app := newTestApp(t)
-	token, _ := MintToken(context.Background(), app.DB, "test")
+	token, _ := CreateToken(context.Background(), app.DB, "test")
 
 	r := uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil)
 	r.URL.RawQuery = "token=" + token
@@ -133,7 +133,7 @@ func TestTokenInQueryStringIsRefused(t *testing.T) {
 
 func TestRevokedTokenIsRefused(t *testing.T) {
 	app := newTestApp(t)
-	token, _ := MintToken(context.Background(), app.DB, "test")
+	token, _ := CreateToken(context.Background(), app.DB, "test")
 	if _, err := app.DB.Exec(`UPDATE api_tokens SET revoked_at = 1`); err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestRevokedTokenIsRefused(t *testing.T) {
 func TestUploadsPerHourAreCapped(t *testing.T) {
 	app := newTestApp(t)
 	handler := app.Routes()
-	token, _ := MintToken(context.Background(), app.DB, "test")
+	token, _ := CreateToken(context.Background(), app.DB, "test")
 
 	for i := range UploadsPerHour {
 		w := httptest.NewRecorder()
@@ -166,7 +166,7 @@ func TestUploadsPerHourAreCapped(t *testing.T) {
 func TestBlockedHashCannotBeReUploaded(t *testing.T) {
 	app := newTestApp(t)
 	handler := app.Routes()
-	token, _ := MintToken(context.Background(), app.DB, "test")
+	token, _ := CreateToken(context.Background(), app.DB, "test")
 	body := samplePNG(t, 6, 6)
 
 	w := httptest.NewRecorder()
@@ -246,6 +246,34 @@ func TestAdminAuthAndOrigin(t *testing.T) {
 	}
 }
 
+// The pages link the icon by path, and browsers ask for /favicon.ico regardless; both have to
+// resolve or every page load logs a 404.
+func TestFaviconIsServed(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+
+	for _, path := range []string{"/static/favicon.svg", "/static/favicon-32.png", "/static/apple-touch-icon.png"} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test"+path, nil))
+		if w.Code != http.StatusOK {
+			t.Errorf("%s = %d, want 200", path, w.Code)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/favicon.ico", nil))
+	if w.Code != http.StatusMovedPermanently {
+		t.Errorf("/favicon.ico = %d, want 301", w.Code)
+	}
+
+	// The drop page has to actually reference it, or the route is decoration.
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/", nil))
+	if !strings.Contains(w.Body.String(), `rel="icon"`) {
+		t.Error("the drop page does not link a favicon")
+	}
+}
+
 // WebKit omits Origin on same-origin form submissions, so the dashboard has to recognise its
 // own pages by Sec-Fetch-Site or Referer too - and still refuse everything cross-site.
 func TestAdminOriginFallbacks(t *testing.T) {
@@ -306,7 +334,7 @@ func TestAdminOriginFallbacks(t *testing.T) {
 func TestRefusesForgedForwardedFor(t *testing.T) {
 	app := newTestApp(t)
 	app.Config.TrustProxy = "cloudflare"
-	token, _ := MintToken(context.Background(), app.DB, "test")
+	token, _ := CreateToken(context.Background(), app.DB, "test")
 
 	r := uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil)
 	r.Header.Set("X-Forwarded-For", "1.2.3.4")
@@ -420,7 +448,7 @@ func TestRenameCompatShims(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := MintToken(context.Background(), db, "keep"); err != nil {
+	if _, err := CreateToken(context.Background(), db, "keep"); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -438,7 +466,7 @@ func TestRenameCompatShims(t *testing.T) {
 
 func TestPurgeRemovesExpiredUploads(t *testing.T) {
 	app := newTestApp(t)
-	token, _ := MintToken(context.Background(), app.DB, "test")
+	token, _ := CreateToken(context.Background(), app.DB, "test")
 
 	w := httptest.NewRecorder()
 	app.Routes().ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", token,
@@ -470,7 +498,7 @@ func TestPurgeRemovesExpiredUploads(t *testing.T) {
 // with a report whose upload still exists, which is the case an operator actually sees.
 func TestAdminLoadsWithAnOpenReport(t *testing.T) {
 	app := newTestApp(t)
-	token, _ := MintToken(context.Background(), app.DB, "test")
+	token, _ := CreateToken(context.Background(), app.DB, "test")
 
 	w := httptest.NewRecorder()
 	app.Routes().ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil))
@@ -510,7 +538,7 @@ func TestAdminLoadsWithAnOpenReport(t *testing.T) {
 // leaves the scrubber dead.
 func TestLocalBlobServesRanges(t *testing.T) {
 	app := newTestApp(t)
-	token, _ := MintToken(context.Background(), app.DB, "test")
+	token, _ := CreateToken(context.Background(), app.DB, "test")
 
 	w := httptest.NewRecorder()
 	app.Routes().ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil))
@@ -559,12 +587,12 @@ func TestDropPageCSPNamesTheCDNOrigin(t *testing.T) {
 }
 
 // A token in a URL lands in browser history and in every access log in front of the origin,
-// which is what the API refuses a request over. Minting must not put one there.
-func TestMintedTokenIsNeverInTheURL(t *testing.T) {
+// which is what the API refuses a request over. Creating one must not put it there.
+func TestNewTokenIsNeverInTheURL(t *testing.T) {
 	app := newTestApp(t)
 	handler := app.Routes()
 
-	form := strings.NewReader("do=mint&label=laptop")
+	form := strings.NewReader("do=create&label=laptop")
 	r := httptest.NewRequest(http.MethodPost, "http://prunto.test/admin/actions", form)
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Origin", app.Config.BaseURL)
@@ -573,38 +601,38 @@ func TestMintedTokenIsNeverInTheURL(t *testing.T) {
 	handler.ServeHTTP(w, r)
 
 	if w.Code != http.StatusSeeOther {
-		t.Fatalf("mint returned %d, want %d", w.Code, http.StatusSeeOther)
+		t.Fatalf("create returned %d, want %d", w.Code, http.StatusSeeOther)
 	}
 	if loc := w.Header().Get("Location"); loc != "/admin" {
 		t.Fatalf("the redirect carries the token: %q", loc)
 	}
 
-	var minted *http.Cookie
+	var created *http.Cookie
 	for _, c := range w.Result().Cookies() {
-		if c.Name == mintedCookie {
-			minted = c
+		if c.Name == newTokenCookieName {
+			created = c
 		}
 	}
-	if minted == nil || !strings.HasPrefix(minted.Value, TokenPrefix) {
-		t.Fatalf("no minted token handed back in a cookie: %v", minted)
+	if created == nil || !strings.HasPrefix(created.Value, TokenPrefix) {
+		t.Fatalf("no created token handed back in a cookie: %v", created)
 	}
-	if !minted.HttpOnly || minted.SameSite != http.SameSiteStrictMode {
-		t.Fatalf("the minted-token cookie is not locked down: %+v", minted)
+	if !created.HttpOnly || created.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("the created-token cookie is not locked down: %+v", created)
 	}
 
 	// Shown once: the dashboard renders it and clears the cookie in the same response.
 	r = httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
-	r.AddCookie(minted)
+	r.AddCookie(created)
 	r.SetBasicAuth("admin", "hunter2")
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 
-	if !strings.Contains(w.Body.String(), minted.Value) {
-		t.Fatal("the dashboard did not show the minted token")
+	if !strings.Contains(w.Body.String(), created.Value) {
+		t.Fatal("the dashboard did not show the created token")
 	}
 	for _, c := range w.Result().Cookies() {
-		if c.Name == mintedCookie && c.MaxAge >= 0 {
-			t.Fatalf("the minted-token cookie was not cleared: %+v", c)
+		if c.Name == newTokenCookieName && c.MaxAge >= 0 {
+			t.Fatalf("the created-token cookie was not cleared: %+v", c)
 		}
 	}
 }

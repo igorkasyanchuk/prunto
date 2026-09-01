@@ -196,7 +196,7 @@ func (a *App) authenticate(w http.ResponseWriter, r *http.Request) (sql.NullInt6
 		writeError(w, http.StatusUnauthorized,
 			"Send the token in the Authorization header. A token in the query string leaks into "+
 				"access logs, browser history and Referer headers - treat this one as compromised "+
-				"and mint another.")
+				"and create another.")
 		return sql.NullInt64{}, false
 	}
 	tokenID, ok := a.Authenticate(r.Context(), raw)

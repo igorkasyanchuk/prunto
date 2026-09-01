@@ -132,7 +132,7 @@ func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request) {
 	view["Tokens"] = tokens
 	view["Events"] = events
 	view["Blocked"] = blocked
-	view["Minted"] = a.takeMintedToken(w, r)
+	view["NewToken"] = a.takeNewToken(w, r)
 	a.render(w, "admin.html", view)
 }
 
@@ -165,14 +165,14 @@ func (a *App) handleAdminAction(w http.ResponseWriter, r *http.Request) {
 			`UPDATE abuse_reports SET handled_at = ? WHERE id = ?`, time.Now().Unix(), id)
 	case "unblock":
 		_, err = a.DB.ExecContext(ctx, `DELETE FROM blocked_hashes WHERE content_hash = ?`, id)
-	case "mint":
+	case "create":
 		label := r.PostFormValue("label")
 		if label == "" {
 			label = "unnamed"
 		}
 		var raw string
-		if raw, err = MintToken(ctx, a.DB, label); err == nil {
-			http.SetCookie(w, a.newMintedCookie(raw, 60))
+		if raw, err = CreateToken(ctx, a.DB, label); err == nil {
+			http.SetCookie(w, a.newTokenCookie(raw, 60))
 		}
 	default:
 		http.Error(w, "Unknown action", http.StatusBadRequest)
@@ -191,25 +191,25 @@ func (a *App) handleAdminAction(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
-// mintedCookie carries a freshly minted token across the redirect to /admin.
+// newTokenCookieName carries a freshly created token across the redirect to /admin.
 //
 // Not the query string: a token in a URL lands in browser history and in the access log of
 // every proxy in front of this origin, which is precisely what the API refuses a request over
 // (see ErrTokenInQuery). The cookie is read once and cleared on the render that shows it.
-const mintedCookie = "prunto_minted"
+const newTokenCookieName = "prunto_new_token"
 
-func (a *App) takeMintedToken(w http.ResponseWriter, r *http.Request) string {
-	c, err := r.Cookie(mintedCookie)
+func (a *App) takeNewToken(w http.ResponseWriter, r *http.Request) string {
+	c, err := r.Cookie(newTokenCookieName)
 	if err != nil {
 		return ""
 	}
-	http.SetCookie(w, a.newMintedCookie("", -1))
+	http.SetCookie(w, a.newTokenCookie("", -1))
 	return c.Value
 }
 
-func (a *App) newMintedCookie(value string, maxAge int) *http.Cookie {
+func (a *App) newTokenCookie(value string, maxAge int) *http.Cookie {
 	return &http.Cookie{
-		Name:     mintedCookie,
+		Name:     newTokenCookieName,
 		Value:    value,
 		Path:     "/admin",
 		MaxAge:   maxAge,

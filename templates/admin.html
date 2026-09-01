@@ -4,14 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Admin &middot; prunto</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/static/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 <main class="wrap wide">
   <h1>prunto admin</h1>
 
-  {{if .Minted}}
-  <p class="minted">New token, shown once: <code>{{.Minted}}</code></p>
+  {{if .NewToken}}
+  <p class="new-token">New token, shown once: <code>{{.NewToken}}</code></p>
   {{end}}
 
   <h2>Open reports ({{len .Reports}})</h2>
@@ -65,9 +68,9 @@
   </table>
 
   <h2>Tokens</h2>
-  <form method="post" action="/admin/actions" class="inline mint">
+  <form method="post" action="/admin/actions" class="inline create">
     <input type="text" name="label" placeholder="label" required>
-    <button name="do" value="mint">Mint token</button>
+    <button name="do" value="create">Create token</button>
   </form>
   <table>
     <tr><th>Label</th><th>Uploads</th><th>Last used</th><th>Created</th><th></th></tr>

@@ -23,7 +23,7 @@ Those URLs point at your own host, which GitHub cannot reach, so this mode is fo
 service and working on it. For real pull requests, point it at a bucket behind a CDN — see
 [COOLIFY.md](COOLIFY.md) for a deploy that takes about twenty minutes.
 
-Mint a token before the first upload:
+Create a token before the first upload:
 
 ```bash
 docker exec -it <container> /prunto token "my laptop"
@@ -84,7 +84,7 @@ environment variable for a CLI.
 prunto token "my laptop"   # prints the token once
 ```
 
-Only the SHA-256 digest is stored, so a lost token cannot be recovered — mint another. Revoke
+Only the SHA-256 digest is stored, so a lost token cannot be recovered — create another. Revoke
 from `/admin`. Every upload records the token that made it, so abuse always has an owner to
 cut off.
 

@@ -42,7 +42,7 @@ bare origin: a path, a query, a fragment or credentials in it are all refused by
 container. The image is `scratch`: it has neither, and no shell to run them from, so an enabled
 check marks the container unhealthy forever. Traefik still routes to it while the check is off.
 
-**Deploy.** Then mint a token — over SSH, not Coolify's web terminal, which opens a shell the
+**Deploy.** Then create a token — over SSH, not Coolify's web terminal, which opens a shell the
 image does not have. `docker exec` on the binary directly works, because it is static:
 
 ```bash

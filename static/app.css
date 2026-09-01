@@ -20,13 +20,13 @@ h2 { font-size: 1.05rem; margin: 2.5rem 0 .6rem; }
 .limits, .muted { color: var(--muted); font-size: .85rem; }
 .warn { color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: .6rem .8rem; font-size: .85rem; }
 .error { color: var(--err); }
-.minted { background: var(--card); border: 1px solid var(--accent); border-radius: 8px; padding: .7rem .9rem; }
+.new-token { background: var(--card); border: 1px solid var(--accent); border-radius: 8px; padding: .7rem .9rem; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
 pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: .8rem; overflow-x: auto; }
 a { color: var(--accent); }
 
 .token { display: block; margin-bottom: 1.25rem; font-size: .85rem; color: var(--muted); }
-.token input, .token textarea, .mint input {
+.token input, .token textarea, .create input {
   display: block; width: 100%; margin-top: .35rem; padding: .55rem .7rem;
   border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg);
   font: inherit;
@@ -61,4 +61,4 @@ table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 
 th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 500; }
 form.inline { display: flex; gap: .35rem; flex-wrap: wrap; }
-form.mint { margin-bottom: .75rem; max-width: 24rem; }
+form.create { margin-bottom: .75rem; max-width: 24rem; }

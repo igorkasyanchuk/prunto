@@ -169,7 +169,7 @@ func runCommand(app *App, args []string) error {
 		if len(args) < 2 {
 			return fmt.Errorf(`usage: prunto token "label"`)
 		}
-		raw, err := MintToken(context.Background(), app.DB, strings.Join(args[1:], " "))
+		raw, err := CreateToken(context.Background(), app.DB, strings.Join(args[1:], " "))
 		if err != nil {
 			return err
 		}
@@ -198,6 +198,12 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /abuse_reports", a.handleCreateAbuseReport)
 	mux.HandleFunc("GET /admin", a.guard(a.handleAdmin))
 	mux.HandleFunc("POST /admin/actions", a.guard(a.handleAdminAction))
+	// Clients that ignore the <link rel="icon"> tags ask for this by reflex; without the route
+	// it falls through to the 404 handler on every page load.
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/favicon-32.png", http.StatusMovedPermanently)
+	})
+
 	// No directory listings: FileServer's autoindex is the one HTML page the app would serve
 	// without a lang attribute or a title, and there is nothing to browse anyway.
 	static := http.StripPrefix("/static/", http.FileServerFS(staticFS))

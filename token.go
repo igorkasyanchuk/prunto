@@ -21,9 +21,9 @@ type APIToken struct {
 	CreatedAt  time.Time
 }
 
-// MintToken returns the raw token exactly once. Only its digest is stored, so a lost token
-// cannot be recovered - mint another.
-func MintToken(ctx context.Context, db *sql.DB, label string) (string, error) {
+// CreateToken returns the raw token exactly once. Only its digest is stored, so a lost token
+// cannot be recovered - create another.
+func CreateToken(ctx context.Context, db *sql.DB, label string) (string, error) {
 	raw := TokenPrefix + randToken(24)
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO api_tokens (label, token_digest, created_at) VALUES (?,?,?)`,
