@@ -246,6 +246,61 @@ func TestAdminAuthAndOrigin(t *testing.T) {
 	}
 }
 
+// WebKit omits Origin on same-origin form submissions, so the dashboard has to recognise its
+// own pages by Sec-Fetch-Site or Referer too - and still refuse everything cross-site.
+func TestAdminOriginFallbacks(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+
+	post := func(headers map[string]string) int {
+		r := httptest.NewRequest(http.MethodPost, "http://prunto.test/admin/actions",
+			strings.NewReader("do=handle&id=1"))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		for k, v := range headers {
+			r.Header.Set(k, v)
+		}
+		r.SetBasicAuth("admin", "hunter2")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w.Code
+	}
+
+	allowed := []struct {
+		name    string
+		headers map[string]string
+	}{
+		{"sec-fetch-site same-origin", map[string]string{"Sec-Fetch-Site": "same-origin"}},
+		{"sec-fetch-site none", map[string]string{"Sec-Fetch-Site": "none"}},
+		{"referer on this origin", map[string]string{"Referer": "http://prunto.test/admin"}},
+		{"referer is the origin itself", map[string]string{"Referer": "http://prunto.test"}},
+	}
+	for _, c := range allowed {
+		if got := post(c.headers); got != http.StatusSeeOther {
+			t.Errorf("%s = %d, want 303", c.name, got)
+		}
+	}
+
+	refused := []struct {
+		name    string
+		headers map[string]string
+	}{
+		{"no signal at all", nil},
+		{"cross-site fetch metadata", map[string]string{"Sec-Fetch-Site": "cross-site"}},
+		{"same-site is still another origin", map[string]string{"Sec-Fetch-Site": "same-site"}},
+		{"foreign referer", map[string]string{"Referer": "http://evil.test/x"}},
+		{"referer only prefix-matches the host", map[string]string{"Referer": "http://prunto.test.evil.test/x"}},
+		{"origin wins over a friendly referer", map[string]string{
+			"Origin": "http://evil.test", "Referer": "http://prunto.test/admin"}},
+		{"fetch metadata wins over a friendly referer", map[string]string{
+			"Sec-Fetch-Site": "cross-site", "Referer": "http://prunto.test/admin"}},
+	}
+	for _, c := range refused {
+		if got := post(c.headers); got != http.StatusForbidden {
+			t.Errorf("%s = %d, want 403", c.name, got)
+		}
+	}
+}
+
 // Behind Cloudflare, CF-Connecting-IP is the only address a client cannot forge. Falling back
 // to X-Forwarded-For would turn every rate limit here into decoration.
 func TestRefusesForgedForwardedFor(t *testing.T) {

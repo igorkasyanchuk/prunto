@@ -22,9 +22,9 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		// Basic auth is replayed by the browser on cross-site POSTs, so it is a CSRF carrier
-		// on its own. Origin is sent on every browser POST; requiring it to match is the whole
-		// defence, with no token to thread through forms.
-		if r.Method == http.MethodPost && r.Header.Get("Origin") != a.Config.BaseURL {
+		// on its own. A same-origin check is the whole defence, with no token to thread
+		// through forms.
+		if r.Method == http.MethodPost && !a.sameOrigin(r) {
 			http.Error(w, "Bad origin", http.StatusForbidden)
 			return
 		}
@@ -38,6 +38,32 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+// sameOrigin reports whether a state-changing request came from this instance's own pages.
+//
+// Origin is the strongest signal but not a universal one: WebKit omits it on same-origin form
+// submissions, so requiring it outright locks Safari out of every admin action while looking
+// like a misconfigured BaseURL. Fall back to Sec-Fetch-Site, then to Referer, and refuse a
+// request carrying none of the three — a cross-site POST always carries at least one of them,
+// pointing somewhere else.
+func (a *App) sameOrigin(r *http.Request) bool {
+	if o := r.Header.Get("Origin"); o != "" {
+		return o == a.Config.BaseURL
+	}
+	switch r.Header.Get("Sec-Fetch-Site") {
+	case "same-origin", "none":
+		return true
+	case "":
+		// No fetch metadata from this browser; fall through to Referer.
+	default:
+		// cross-site, or same-site from another host on the registrable domain.
+		return false
+	}
+	if ref := r.Header.Get("Referer"); ref != "" {
+		return ref == a.Config.BaseURL || strings.HasPrefix(ref, a.Config.BaseURL+"/")
+	}
+	return false
 }
 
 type adminReport struct {
