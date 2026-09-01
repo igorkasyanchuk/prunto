@@ -33,7 +33,9 @@
       }
       say("Copied", true);
     } catch {
-      say("Press ⌘C", false);
+      // The value is selected at this point, so the manual copy is one keystroke;
+      // naming the key would be wrong on half the platforms that reach this branch.
+      say("Selected \u2014 copy it", false);
     }
   });
 })();

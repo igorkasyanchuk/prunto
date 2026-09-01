@@ -203,6 +203,33 @@ func TestAdminIsClosedWhenUnconfigured(t *testing.T) {
 	}
 }
 
+// The dashboard renders a live API token and the CSRF token, so it must not be storable.
+// Authentication also has to come before the CSRF check, or an anonymous caller can make the
+// server parse a form body it will then throw away.
+func TestAdminIsUncacheableAndAuthenticatesFirst(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+
+	r := httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
+	r.SetBasicAuth("admin", "hunter2")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if got := w.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store on a page showing a token", got)
+	}
+
+	// No credentials: the answer has to be 401, which is what proves auth ran before the
+	// CSRF check rather than after it.
+	r = httptest.NewRequest(http.MethodPost, "http://prunto.test/admin/actions",
+		strings.NewReader("do=create&label=x"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated POST = %d, want 401 before any form parsing", w.Code)
+	}
+}
+
 // adminSession does what a browser does before it can submit an admin form: load /admin, keep
 // the CSRF cookie, and read the token the page embedded in every form.
 func adminSession(t *testing.T, handler http.Handler) (*http.Cookie, string) {

@@ -21,6 +21,17 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 				http.StatusForbidden)
 			return
 		}
+		// Authenticate first. The CSRF check below calls ParseForm, and reading an
+		// attacker-supplied body is work worth doing only for a caller who has already
+		// proved who they are.
+		user, pass, ok := r.BasicAuth()
+		userOK := subtle.ConstantTimeCompare([]byte(user), []byte(a.Config.AdminUser)) == 1
+		passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(a.Config.AdminPassword)) == 1
+		if !ok || !userOK || !passOK {
+			w.Header().Set("WWW-Authenticate", `Basic realm="prunto"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 		if r.Method == http.MethodPost {
 			if !a.notCrossSite(r) {
 				http.Error(w, "Bad origin", http.StatusForbidden)
@@ -32,14 +43,9 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
-		user, pass, ok := r.BasicAuth()
-		userOK := subtle.ConstantTimeCompare([]byte(user), []byte(a.Config.AdminUser)) == 1
-		passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(a.Config.AdminPassword)) == 1
-		if !ok || !userOK || !passOK {
-			w.Header().Set("WWW-Authenticate", `Basic realm="prunto"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+		// The dashboard renders a freshly created token in plaintext and carries the CSRF
+		// token in every form. Neither belongs in a disk cache or a shared proxy.
+		w.Header().Set("Cache-Control", "no-store")
 		next(w, r)
 	}
 }
