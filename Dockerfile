@@ -4,7 +4,7 @@
 # so a --pull build ships the patched stdlib that CI's govulncheck gate verified. Bump
 # together with go.mod - the image sets GOTOOLCHAIN=local, so a go.mod ahead of the image
 # fails the build instead of downloading a newer toolchain.
-FROM golang:1.25-alpine AS build
+FROM golang:1.27-alpine AS build
 
 WORKDIR /src
 
