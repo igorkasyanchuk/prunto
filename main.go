@@ -167,7 +167,7 @@ func (a *App) withSecurityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Robots-Tag", "noindex, nofollow, noarchive")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
-		if a.Config.TrustProxy == "cloudflare" {
+		if a.Config.TrustProxy != "none" {
 			// TLS is terminated upstream, so HSTS has to be asserted from here.
 			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
@@ -177,19 +177,31 @@ func (a *App) withSecurityHeaders(next http.Handler) http.Handler {
 
 // clientIP resolves the address every rate limit and quota is keyed on.
 //
-// Cloudflare overwrites CF-Connecting-IP on every request it forwards, so a client cannot
-// forge it. X-Forwarded-For can be set by anyone, and trusting it would turn every limit here
-// into decoration. Its absence behind a proxy means the request did not come through
-// Cloudflare at all, which is itself worth refusing over: the origin should not be reachable
-// directly (see README).
+// "cloudflare": Cloudflare overwrites CF-Connecting-IP on every request it forwards, so a
+// client cannot forge it. X-Forwarded-For is ignored: anyone can set it, and trusting it would
+// turn every limit here into decoration.
+//
+// "forwarded": for a plain reverse proxy (Traefik, Caddy, nginx) that appends the address it
+// accepted the connection from to X-Forwarded-For. Only the last entry is used - the one the
+// proxy itself wrote - so whatever the client put in the header first is never read.
+//
+// In either mode the header's absence means the request did not come through the proxy at
+// all, which is itself worth refusing over: the origin should not be reachable directly.
 func (a *App) clientIP(r *http.Request) (string, bool) {
-	if a.Config.TrustProxy != "cloudflare" {
+	var ip string
+	switch a.Config.TrustProxy {
+	case "cloudflare":
+		ip = r.Header.Get("CF-Connecting-IP")
+	case "forwarded":
+		xff := r.Header.Get("X-Forwarded-For")
+		ip = xff[strings.LastIndex(xff, ",")+1:]
+	default:
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
 			host = r.RemoteAddr // no port, as in a test or a unix socket
 		}
-		return host, host != ""
+		ip = host
 	}
-	ip := strings.TrimSpace(r.Header.Get("CF-Connecting-IP"))
+	ip = strings.TrimSpace(ip)
 	return ip, ip != ""
 }

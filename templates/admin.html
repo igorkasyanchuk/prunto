@@ -71,7 +71,7 @@
       <td class="mono"><a href="{{$.BlobBaseURL}}/{{.ObjectKey}}" rel="noreferrer">{{.ObjectKey}}</a></td>
       <td>{{.ContentType}}</td>
       <td>{{bytes .ByteSize}}</td>
-      <td class="mono">{{if .APITokenID.Valid}}#{{.APITokenID.Int64}}{{else}}&mdash;{{end}}</td>
+      <td>{{if .TokenLabel}}{{.TokenLabel}}{{else}}&mdash;{{end}}</td>
       <td>{{stamp .ExpiresAt}}</td>
       <td>
         <form method="post" action="/admin/actions" class="inline">

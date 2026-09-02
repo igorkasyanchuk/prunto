@@ -27,6 +27,7 @@ type Upload struct {
 	Filename    string
 	IP          string
 	APITokenID  sql.NullInt64
+	TokenLabel  string // display only, filled by the admin listing
 	ExpiresAt   time.Time
 	CreatedAt   time.Time
 }

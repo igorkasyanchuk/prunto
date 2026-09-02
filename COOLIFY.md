@@ -47,7 +47,13 @@ refused by name.
 limit is keyed on it, and a request arriving without that header is refused - which is also how
 you find out the origin is reachable directly. Set it **last**, once the hostname actually
 resolves through Cloudflare; flip it while the record is still grey-clouded and every request is
-refused, including your own. Leave `TRUST_PROXY=none` if there is no proxy in front.
+refused, including your own.
+
+Not using Cloudflare? Coolify's Traefik is still a proxy, and with `TRUST_PROXY=none` every
+request would carry Traefik's address: one shared rate-limit bucket for the whole world, and an
+audit trail full of the same IP. Set `TRUST_PROXY=forwarded` instead. Only the last
+`X-Forwarded-For` entry, the one Traefik itself appends, is trusted; a request without the
+header is refused. Leave `TRUST_PROXY=none` only when the process is exposed directly.
 
 **Turn the health check off.** Coolify's health check runs `curl` or `wget` *inside* the
 container. The image is `scratch`: it has neither, and no shell to run them from, so an enabled

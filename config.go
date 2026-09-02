@@ -29,6 +29,14 @@ const (
 	ReportsPerHour = 5
 )
 
+// Failed /admin logins allowed per address before the address is refused for AdminLockout.
+// Basic auth has no session to lock, so the counter is the only thing between the dashboard
+// and a password list.
+const (
+	AdminLoginAttempts = 10
+	AdminLockout       = 15 * time.Minute
+)
+
 type Config struct {
 	Addr    string
 	DataDir string
@@ -37,7 +45,8 @@ type Config struct {
 	AdminUser     string
 	AdminPassword string
 
-	// TrustProxy is "cloudflare" when CF-Connecting-IP is authoritative, "none" otherwise.
+	// TrustProxy is "cloudflare" when CF-Connecting-IP is authoritative, "forwarded" when the
+	// last X-Forwarded-For entry was written by a reverse proxy you control, "none" otherwise.
 	TrustProxy string
 }
 
@@ -57,6 +66,12 @@ func LoadConfig() (Config, error) {
 
 	if c.BaseURL == "" {
 		c.BaseURL = "http://localhost" + c.Addr
+	}
+
+	switch c.TrustProxy {
+	case "none", "cloudflare", "forwarded":
+	default:
+		return c, fmt.Errorf("TRUST_PROXY must be none, cloudflare or forwarded, got %q", c.TrustProxy)
 	}
 
 	// Scheme and host, nothing else. Every failure downstream of a looser value is silent: the

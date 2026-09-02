@@ -210,7 +210,7 @@ func (a *App) authenticate(w http.ResponseWriter, r *http.Request) (sql.NullInt6
 func (a *App) requireIP(w http.ResponseWriter, r *http.Request) (string, bool) {
 	ip, ok := a.clientIP(r)
 	if !ok {
-		a.Log.Printf("refused a request with no CF-Connecting-IP from %s", r.RemoteAddr)
+		a.Log.Printf("refused a request with no client address header from %s", r.RemoteAddr)
 		writeError(w, http.StatusForbidden, "This request did not arrive through the trusted proxy")
 		return "", false
 	}

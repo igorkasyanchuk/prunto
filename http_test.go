@@ -912,3 +912,68 @@ func TestBaseURLMustBeABareOrigin(t *testing.T) {
 		t.Fatalf("BlobBaseURL = %q", cfg.BlobBaseURL())
 	}
 }
+
+// Basic auth has no session to lock, so wrong passwords have to be counted per address. The
+// right password is refused too once the address is locked: otherwise the lock only tells an
+// attacker when they have guessed correctly.
+func TestAdminLoginIsRateLimited(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+
+	get := func(pass string) int {
+		r := httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
+		r.SetBasicAuth("admin", pass)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w.Code
+	}
+
+	for i := 0; i < AdminLoginAttempts; i++ {
+		if got := get("wrong"); got != http.StatusUnauthorized {
+			t.Fatalf("attempt %d = %d, want 401", i+1, got)
+		}
+	}
+	if got := get("wrong"); got != http.StatusTooManyRequests {
+		t.Errorf("after %d failures = %d, want 429", AdminLoginAttempts, got)
+	}
+	if got := get("hunter2"); got != http.StatusTooManyRequests {
+		t.Errorf("right password while locked = %d, want 429", got)
+	}
+
+	// Another address is unaffected.
+	r := httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
+	r.RemoteAddr = "10.0.0.9:1234"
+	r.SetBasicAuth("admin", "hunter2")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Errorf("other address = %d, want 200", w.Code)
+	}
+}
+
+// A plain reverse proxy appends the address it accepted the connection from to
+// X-Forwarded-For. Only that last entry is trusted; whatever the client put in front of it
+// is never read.
+func TestForwardedModeUsesTheLastHop(t *testing.T) {
+	app := newTestApp(t)
+	app.Config.TrustProxy = "forwarded"
+
+	r := httptest.NewRequest(http.MethodGet, "http://prunto.test/", nil)
+	r.Header.Set("X-Forwarded-For", "6.6.6.6, 1.2.3.4")
+	if ip, ok := app.clientIP(r); !ok || ip != "1.2.3.4" {
+		t.Errorf("clientIP = %q, %v; want the last entry", ip, ok)
+	}
+
+	r.Header.Del("X-Forwarded-For")
+	if _, ok := app.clientIP(r); ok {
+		t.Error("a request with no X-Forwarded-For should be refused, it did not come through the proxy")
+	}
+}
+
+func TestTrustProxyIsValidatedAtBoot(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("TRUST_PROXY", "yes")
+	if _, err := LoadConfig(); err == nil {
+		t.Error("an unknown TRUST_PROXY value should be refused at boot, not silently treated as none")
+	}
+}

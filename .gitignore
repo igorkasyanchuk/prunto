@@ -3,3 +3,5 @@
 *.db
 *.db-shm
 *.db-wal
+/.claude/launch.json
+/.claude/worktrees/

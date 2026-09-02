@@ -24,10 +24,29 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 		// Authenticate first. The CSRF check below calls ParseForm, and reading an
 		// attacker-supplied body is work worth doing only for a caller who has already
 		// proved who they are.
+		ip, ipOK := a.clientIP(r)
+		if !ipOK {
+			http.Error(w, "This request did not arrive through the trusted proxy", http.StatusForbidden)
+			return
+		}
+		// Ten wrong passwords from one address and it is refused for a while, right answer or
+		// not. Read before compare so a locked-out address learns nothing from the timing.
+		failKey := "admin-fail:" + ip
+		if n, err := bump(r.Context(), a.DB, failKey, 0, AdminLockout); err == nil && n >= AdminLoginAttempts {
+			http.Error(w, "Too many failed logins from this address, try again later",
+				http.StatusTooManyRequests)
+			return
+		}
 		user, pass, ok := r.BasicAuth()
 		userOK := subtle.ConstantTimeCompare([]byte(user), []byte(a.Config.AdminUser)) == 1
 		passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(a.Config.AdminPassword)) == 1
 		if !ok || !userOK || !passOK {
+			// A browser's first, credential-less request is not an attempt.
+			if ok {
+				if _, err := bump(r.Context(), a.DB, failKey, 1, AdminLockout); err != nil {
+					a.Log.Printf("admin login limit: %v", err)
+				}
+			}
 			w.Header().Set("WWW-Authenticate", `Basic realm="prunto"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -310,9 +329,11 @@ func (a *App) openReports(ctx context.Context) ([]adminReport, error) {
 
 func (a *App) recentUploads(ctx context.Context) ([]Upload, error) {
 	rows, err := a.DB.QueryContext(ctx,
-		`SELECT id, token, delete_token, object_key, content_type, content_hash, byte_size,
-		        COALESCE(filename, ''), COALESCE(ip, ''), api_token_id, expires_at, created_at
-		 FROM uploads ORDER BY created_at DESC LIMIT 100`)
+		`SELECT u.id, u.token, u.delete_token, u.object_key, u.content_type, u.content_hash,
+		        u.byte_size, COALESCE(u.filename, ''), COALESCE(u.ip, ''), u.api_token_id,
+		        COALESCE(t.label, ''), u.expires_at, u.created_at
+		 FROM uploads u LEFT JOIN api_tokens t ON t.id = u.api_token_id
+		 ORDER BY u.created_at DESC LIMIT 100`)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +344,8 @@ func (a *App) recentUploads(ctx context.Context) ([]Upload, error) {
 		var u Upload
 		var expires, created int64
 		if err := rows.Scan(&u.ID, &u.Token, &u.DeleteToken, &u.ObjectKey, &u.ContentType,
-			&u.ContentHash, &u.ByteSize, &u.Filename, &u.IP, &u.APITokenID, &expires, &created); err != nil {
+			&u.ContentHash, &u.ByteSize, &u.Filename, &u.IP, &u.APITokenID, &u.TokenLabel,
+			&expires, &created); err != nil {
 			return nil, err
 		}
 		u.ExpiresAt = time.Unix(expires, 0).UTC()
