@@ -43,12 +43,9 @@ type Config struct {
 
 func LoadConfig() (Config, error) {
 	c := Config{
-		Addr:    ":" + env("PORT", "3000"),
-		DataDir: env("DATA_DIR", "./data"),
-		// ponytail: PRIITO_BASE_URL fallback is a one-release shim for deployments that
-		// predate the rename; drop it (and main's deprecation warning) once those have
-		// moved to PRUNTO_BASE_URL.
-		BaseURL:       strings.TrimSuffix(env("PRUNTO_BASE_URL", env("PRIITO_BASE_URL", "")), "/"),
+		Addr:          ":" + env("PORT", "3000"),
+		DataDir:       env("DATA_DIR", "./data"),
+		BaseURL:       strings.TrimSuffix(env("PRUNTO_BASE_URL", ""), "/"),
 		AdminUser:     env("ADMIN_USER", ""),
 		AdminPassword: env("ADMIN_PASSWORD", ""),
 		TrustProxy:    env("TRUST_PROXY", "none"),
