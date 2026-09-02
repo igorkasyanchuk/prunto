@@ -276,6 +276,17 @@ func TestDropPageExplainsBothInstallPaths(t *testing.T) {
 			t.Errorf("no copy button targets %q", id)
 		}
 	}
+	// Anything the prompt tells an assistant to run has to be runnable as written: a
+	// placeholder path here fails silently under curl -sf and produces no file.
+	prompt := body[strings.Index(body, `id="setup-prompt"`):]
+	prompt = prompt[:strings.Index(prompt, "</pre>")]
+	if strings.Contains(prompt, "SKILLS_DIR") {
+		t.Error("the setup prompt still carries a placeholder path in a command")
+	}
+	if !strings.Contains(prompt, "mkdir -p ~/.claude/skills/prunto-screenshot") {
+		t.Error("the setup prompt's download step has no mkdir, so curl -sfo will fail")
+	}
+
 	// The prompt has to name this instance, or it is useless pasted into another machine.
 	if strings.Count(body, "http://prunto.test/prunto-screenshot/SKILL.md") < 3 {
 		t.Error("the install commands and the prompt do not all point at this instance")

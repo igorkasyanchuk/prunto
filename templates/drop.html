@@ -83,14 +83,15 @@ export PRUNTO_API_TOKEN=your-token</code></pre>
       </div>
 <pre id="setup-prompt">Please set up the "prunto-screenshot" instructions on this machine for me.
 
-1. Download the file:
-   curl -sfo SKILLS_DIR/prunto-screenshot/SKILL.md {{.SkillURL}}
-   Create the directory first. Put it wherever you load reusable instructions
-   from. If you do not have such a place, save it somewhere sensible in the
-   project and read it when I ask for the task below.
-   Common locations: ~/.claude/skills/prunto-screenshot/SKILL.md for every
-   project, or .claude/skills/prunto-screenshot/SKILL.md in a repo for just
-   that one.
+1. Download the file. This works if you load reusable instructions from
+   ~/.claude/skills (Claude Code and anything compatible with it):
+
+   mkdir -p ~/.claude/skills/prunto-screenshot
+   curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md {{.SkillURL}}
+
+   For this repository only, use .claude/skills/prunto-screenshot/ in the repo
+   root instead. If you keep reusable instructions somewhere else entirely,
+   put it there and adjust both paths to match.
 
 2. Ask me for my prunto API token, then add
    export PRUNTO_API_TOKEN=&lt;the token&gt;
