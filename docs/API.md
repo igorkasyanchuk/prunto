@@ -58,7 +58,7 @@ Errors return a JSON `error` string:
 | Per token | 20 uploads per hour, 200 MB per day |
 | Retention | 14 days by default, shorter on request, never longer |
 | Abuse reports | 5 per hour per address |
-| Admin logins | 10 wrong passwords per address, then locked for 15 minutes |
+| Admin logins | 10 wrong passwords per address within 15 minutes locks it for 15 minutes; a successful login clears the count |
 
 ## Configuration
 
@@ -72,8 +72,14 @@ Errors return a JSON `error` string:
 
 `TRUST_PROXY` decides which address every rate limit is keyed on. `cloudflare` trusts only
 `CF-Connecting-IP`; `forwarded` trusts only the last `X-Forwarded-For` entry, the one your
-proxy wrote. In both modes a request without the header is refused, which is also how you find
-out the origin is reachable directly.
+proxy wrote, across every line of that header. The entry must be an IP address; a port is
+stripped, anything else is refused. In both modes a request without a usable address is
+refused, which is also how you find out the origin is reachable directly. `forwarded` means
+exactly one proxy: with Cloudflare in front of your own proxy, use `cloudflare`, or every
+visitor through the same edge shares one address.
+
+HSTS and the `Secure` flag on admin cookies follow the scheme of `PRUNTO_BASE_URL`, not
+`TRUST_PROXY`.
 
 ## Commands
 

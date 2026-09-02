@@ -27,7 +27,7 @@ func (a *App) handleCreateUpload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ip, ok := a.requireIP(w, r)
+	ip, ok := a.requireIP(w, r, true)
 	if !ok {
 		return
 	}
@@ -207,11 +207,18 @@ func (a *App) authenticate(w http.ResponseWriter, r *http.Request) (sql.NullInt6
 	return tokenID, true
 }
 
-func (a *App) requireIP(w http.ResponseWriter, r *http.Request) (string, bool) {
+// requireIP resolves the client address or refuses the request. The API answers in JSON,
+// the pages in plain text; the message and the log line are the same either way.
+func (a *App) requireIP(w http.ResponseWriter, r *http.Request, asJSON bool) (string, bool) {
 	ip, ok := a.clientIP(r)
 	if !ok {
-		a.Log.Printf("refused a request with no client address header from %s", r.RemoteAddr)
-		writeError(w, http.StatusForbidden, "This request did not arrive through the trusted proxy")
+		a.Log.Printf("refused a request with no usable client address from %s", r.RemoteAddr)
+		const msg = "This request did not arrive through the trusted proxy"
+		if asJSON {
+			writeError(w, http.StatusForbidden, msg)
+		} else {
+			http.Error(w, msg, http.StatusForbidden)
+		}
 		return "", false
 	}
 	return ip, true

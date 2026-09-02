@@ -940,6 +940,17 @@ func TestAdminLoginIsRateLimited(t *testing.T) {
 		t.Errorf("right password while locked = %d, want 429", got)
 	}
 
+	// The lockout lasts AdminLockout from the failure that triggered it, not from the first
+	// wrong password of the window.
+	var expires int64
+	if err := app.DB.QueryRow(`SELECT expires_at FROM counters WHERE key = ?`,
+		"admin-fail:192.0.2.1").Scan(&expires); err != nil {
+		t.Fatal(err)
+	}
+	if left := time.Until(time.Unix(expires, 0)); left < AdminLockout-5*time.Second {
+		t.Errorf("lockout expires in %v, want about %v", left, AdminLockout)
+	}
+
 	// Another address is unaffected.
 	r := httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
 	r.RemoteAddr = "10.0.0.9:1234"
@@ -948,6 +959,32 @@ func TestAdminLoginIsRateLimited(t *testing.T) {
 	handler.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Errorf("other address = %d, want 200", w.Code)
+	}
+}
+
+// A successful login forgives earlier typos. Without this, nine of them linger for the rest
+// of the window and the tenth locks the admin out.
+func TestAdminLoginClearsFailuresOnSuccess(t *testing.T) {
+	app := newTestApp(t)
+	handler := app.Routes()
+
+	get := func(pass string) int {
+		r := httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
+		r.SetBasicAuth("admin", pass)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w.Code
+	}
+	for i := 0; i < AdminLoginAttempts-1; i++ {
+		get("wrong")
+	}
+	if got := get("hunter2"); got != http.StatusOK {
+		t.Fatalf("right password after %d failures = %d, want 200", AdminLoginAttempts-1, got)
+	}
+	for i := 0; i < AdminLoginAttempts-1; i++ {
+		if got := get("wrong"); got != http.StatusUnauthorized {
+			t.Fatalf("failure %d after a success = %d, want 401", i+1, got)
+		}
 	}
 }
 
@@ -964,9 +1001,30 @@ func TestForwardedModeUsesTheLastHop(t *testing.T) {
 		t.Errorf("clientIP = %q, %v; want the last entry", ip, ok)
 	}
 
-	r.Header.Del("X-Forwarded-For")
-	if _, ok := app.clientIP(r); ok {
-		t.Error("a request with no X-Forwarded-For should be refused, it did not come through the proxy")
+	// HAProxy adds its own header line rather than appending to the client's. The client's
+	// line comes first; only the last line's last entry is the proxy's.
+	r.Header.Set("X-Forwarded-For", "6.6.6.6")
+	r.Header.Add("X-Forwarded-For", "1.2.3.4")
+	if ip, ok := app.clientIP(r); !ok || ip != "1.2.3.4" {
+		t.Errorf("clientIP with two header lines = %q, %v; want the last line", ip, ok)
+	}
+
+	// A proxy that writes ip:port must not give every connection its own rate-limit key.
+	r.Header.Set("X-Forwarded-For", "1.2.3.4:51234")
+	if ip, _ := app.clientIP(r); ip != "1.2.3.4" {
+		t.Errorf("clientIP with a port = %q, want the port stripped", ip)
+	}
+	r.Header.Set("X-Forwarded-For", "[2001:db8::1]:443")
+	if ip, _ := app.clientIP(r); ip != "2001:db8::1" {
+		t.Errorf("clientIP with a bracketed IPv6 = %q", ip)
+	}
+
+	// Garbage is not an address, and neither is the empty entry after a trailing comma.
+	for _, bad := range []string{"", "1.2.3.4,", "not-an-ip", "6.6.6.6, "} {
+		r.Header.Set("X-Forwarded-For", bad)
+		if _, ok := app.clientIP(r); ok {
+			t.Errorf("X-Forwarded-For %q should be refused", bad)
+		}
 	}
 }
 

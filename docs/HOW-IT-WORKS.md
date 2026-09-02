@@ -88,8 +88,8 @@ upload records the token that made it, so abuse always has an owner to cut off.
 | --- | --- |
 | Services required | none |
 | Direct dependencies | **1** (`modernc.org/sqlite`, pure Go, no cgo) |
-| Go source | 2,279 lines, plus 1,363 lines of tests |
-| Tests | 41, **71%** statement coverage, none touch the network |
+| Go source | 2,351 lines, plus 1,421 lines of tests |
+| Tests | 42, **72%** statement coverage, none touch the network |
 | Binary | **12.4 MB**, static, `CGO_ENABLED=0` |
 | Image | `FROM scratch`: the binary and your data volume, nothing else |
 | Cold start | ~45 ms from exec to first served request |

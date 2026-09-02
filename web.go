@@ -145,9 +145,8 @@ var uploadTokenPattern = regexp.MustCompile(`/([\w-]+)\.(?:png|jpg|gif|webp|mp4|
 // handleCreateAbuseReport takes a report from anyone, with no account and no token: someone
 // who found the content in a pull request has neither, and no reason to get one.
 func (a *App) handleCreateAbuseReport(w http.ResponseWriter, r *http.Request) {
-	ip, ok := a.clientIP(r)
+	ip, ok := a.requireIP(w, r, false)
 	if !ok {
-		http.Error(w, "This request did not arrive through the trusted proxy", http.StatusForbidden)
 		return
 	}
 	// A limiter that cannot count fails open, but it does not fail silently: an operator has to

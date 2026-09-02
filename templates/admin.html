@@ -71,7 +71,7 @@
       <td class="mono"><a href="{{$.BlobBaseURL}}/{{.ObjectKey}}" rel="noreferrer">{{.ObjectKey}}</a></td>
       <td>{{.ContentType}}</td>
       <td>{{bytes .ByteSize}}</td>
-      <td>{{if .TokenLabel}}{{.TokenLabel}}{{else}}&mdash;{{end}}</td>
+      <td>{{if .TokenLabel}}{{.TokenLabel}} <span class="mono muted">#{{.APITokenID.Int64}}</span>{{else}}&mdash;{{end}}</td>
       <td>{{stamp .ExpiresAt}}</td>
       <td>
         <form method="post" action="/admin/actions" class="inline">
@@ -95,7 +95,7 @@
     <tr><th>Label</th><th>Uploads</th><th>Last used</th><th>Created</th><th></th></tr>
     {{range .Tokens}}
     <tr>
-      <td>{{.Label}}</td>
+      <td>{{.Label}} <span class="mono muted">#{{.ID}}</span></td>
       <td>{{.Uploads}}</td>
       <td>{{if .LastUsedAt}}{{stamp .LastUsedAt}}{{else}}<span class="muted">never</span>{{end}}</td>
       <td>{{stamp .CreatedAt}}</td>

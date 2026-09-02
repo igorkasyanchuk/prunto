@@ -29,9 +29,10 @@ const (
 	ReportsPerHour = 5
 )
 
-// Failed /admin logins allowed per address before the address is refused for AdminLockout.
-// Basic auth has no session to lock, so the counter is the only thing between the dashboard
-// and a password list.
+// Wrong /admin passwords allowed per address per AdminLockout; reaching the count refuses the
+// address for a full AdminLockout from that moment, and a successful login clears it. Basic
+// auth has no session to lock, so the counter is the only thing between the dashboard and a
+// password list.
 const (
 	AdminLoginAttempts = 10
 	AdminLockout       = 15 * time.Minute
@@ -89,6 +90,11 @@ func LoadConfig() (Config, error) {
 // AdminEnabled reports whether /admin will answer at all. An unconfigured admin is closed,
 // not open.
 func (c Config) AdminEnabled() bool { return c.AdminUser != "" && c.AdminPassword != "" }
+
+// HTTPS reports whether the public origin is served over TLS. The app never terminates TLS
+// itself, so the configured origin is the only source of truth: HSTS and the Secure cookie
+// flag both key on it.
+func (c Config) HTTPS() bool { return strings.HasPrefix(c.BaseURL, "https://") }
 
 func (c Config) DBPath() string { return filepath.Join(c.DataDir, "prunto.db") }
 

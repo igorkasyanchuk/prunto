@@ -167,7 +167,7 @@ func (a *App) withSecurityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Robots-Tag", "noindex, nofollow, noarchive")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
-		if a.Config.TrustProxy != "none" {
+		if a.Config.HTTPS() {
 			// TLS is terminated upstream, so HSTS has to be asserted from here.
 			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
@@ -188,20 +188,33 @@ func (a *App) withSecurityHeaders(next http.Handler) http.Handler {
 // In either mode the header's absence means the request did not come through the proxy at
 // all, which is itself worth refusing over: the origin should not be reachable directly.
 func (a *App) clientIP(r *http.Request) (string, bool) {
-	var ip string
+	var raw string
 	switch a.Config.TrustProxy {
 	case "cloudflare":
-		ip = r.Header.Get("CF-Connecting-IP")
+		raw = r.Header.Get("CF-Connecting-IP")
 	case "forwarded":
-		xff := r.Header.Get("X-Forwarded-For")
-		ip = xff[strings.LastIndex(xff, ",")+1:]
+		// Values, not Get: a proxy that adds its own header line instead of appending to
+		// the client's (HAProxy does) would otherwise leave the client's line first, and
+		// Get returns only the first.
+		xff := strings.Join(r.Header.Values("X-Forwarded-For"), ",")
+		raw = xff[strings.LastIndex(xff, ",")+1:]
 	default:
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			host = r.RemoteAddr // no port, as in a test or a unix socket
-		}
-		ip = host
+		raw = r.RemoteAddr
 	}
-	ip = strings.TrimSpace(ip)
+	ip := hostIP(raw)
 	return ip, ip != ""
+}
+
+// hostIP normalises what a header or RemoteAddr carries to a bare IP, or "" if it is not
+// one. A proxy that writes ip:port would otherwise give every connection its own rate-limit
+// key, and a trailing comma or garbage would become a key too.
+func hostIP(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if host, _, err := net.SplitHostPort(raw); err == nil {
+		raw = host
+	}
+	if ip := net.ParseIP(strings.Trim(raw, "[]")); ip != nil {
+		return ip.String()
+	}
+	return ""
 }

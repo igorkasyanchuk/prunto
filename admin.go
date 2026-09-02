@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -24,15 +23,22 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 		// Authenticate first. The CSRF check below calls ParseForm, and reading an
 		// attacker-supplied body is work worth doing only for a caller who has already
 		// proved who they are.
-		ip, ipOK := a.clientIP(r)
+		ip, ipOK := a.requireIP(w, r, false)
 		if !ipOK {
-			http.Error(w, "This request did not arrive through the trusted proxy", http.StatusForbidden)
 			return
 		}
-		// Ten wrong passwords from one address and it is refused for a while, right answer or
-		// not. Read before compare so a locked-out address learns nothing from the timing.
+		// AdminLoginAttempts wrong passwords from one address and it is refused for
+		// AdminLockout, right answer or not. The read is a plain SELECT: this runs on every
+		// dashboard request and must not cost a write. A limiter that cannot be read fails
+		// closed - the dashboard needs the same database a moment later anyway.
 		failKey := "admin-fail:" + ip
-		if n, err := bump(r.Context(), a.DB, failKey, 0, AdminLockout); err == nil && n >= AdminLoginAttempts {
+		failures, err := peek(r.Context(), a.DB, failKey)
+		if err != nil {
+			a.Log.Printf("admin login limit: %v", err)
+			http.Error(w, "Try again later", http.StatusServiceUnavailable)
+			return
+		}
+		if failures >= AdminLoginAttempts {
 			http.Error(w, "Too many failed logins from this address, try again later",
 				http.StatusTooManyRequests)
 			return
@@ -43,13 +49,18 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 		if !ok || !userOK || !passOK {
 			// A browser's first, credential-less request is not an attempt.
 			if ok {
-				if _, err := bump(r.Context(), a.DB, failKey, 1, AdminLockout); err != nil {
-					a.Log.Printf("admin login limit: %v", err)
-				}
+				a.recordAdminFailure(r.Context(), failKey)
 			}
 			w.Header().Set("WWW-Authenticate", `Basic realm="prunto"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
+		}
+		// A successful login forgives earlier typos; otherwise nine of them linger for the
+		// rest of the window and the tenth locks the admin out.
+		if failures > 0 {
+			if err := clear(r.Context(), a.DB, failKey); err != nil {
+				a.Log.Printf("admin login limit: %v", err)
+			}
 		}
 		if r.Method == http.MethodPost {
 			if !a.notCrossSite(r) {
@@ -66,6 +77,19 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 		// token in every form. Neither belongs in a disk cache or a shared proxy.
 		w.Header().Set("Cache-Control", "no-store")
 		next(w, r)
+	}
+}
+
+// recordAdminFailure counts a wrong password. bump's window is anchored at the first failure,
+// so on its own the tenth failure at 14m59s would lock the address for one second; when the
+// threshold is reached the expiry is pushed out so the lockout lasts the full AdminLockout.
+func (a *App) recordAdminFailure(ctx context.Context, key string) {
+	n, err := bump(ctx, a.DB, key, 1, AdminLockout)
+	if err == nil && n >= AdminLoginAttempts {
+		err = extend(ctx, a.DB, key, AdminLockout)
+	}
+	if err != nil {
+		a.Log.Printf("admin login limit: %v", err)
 	}
 }
 
@@ -117,7 +141,7 @@ func (a *App) issueCSRFToken(w http.ResponseWriter, r *http.Request) string {
 		MaxAge:   12 * 60 * 60,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   strings.HasPrefix(a.Config.BaseURL, "https://"),
+		Secure:   a.Config.HTTPS(),
 	})
 	return token
 }
@@ -285,7 +309,7 @@ func (a *App) newTokenCookie(value string, maxAge int) *http.Cookie {
 		MaxAge:   maxAge,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   strings.HasPrefix(a.Config.BaseURL, "https://"),
+		Secure:   a.Config.HTTPS(),
 	}
 }
 
