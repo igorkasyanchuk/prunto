@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # The minor, at its newest patch, named here rather than read from go.mod: a
           # dependency can drag go.mod's line to an exact patch (sqlite did, to 1.25.0), and
