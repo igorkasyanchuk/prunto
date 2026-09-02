@@ -4,27 +4,30 @@
 [![licence](https://img.shields.io/badge/licence-MIT-green.svg)](LICENSE)
 [![image](https://img.shields.io/badge/ghcr.io-igorkasyanchuk%2Fprunto-blue)](https://ghcr.io/igorkasyanchuk/prunto)
 
-**Screenshots for pull requests, in one command.** Drop a file, get a public URL, paste it into
-the PR. Gone in 14 days. Runs as one 12 MB binary with nothing else to operate.
+Self-hosted image host for pull request screenshots, built for AI coding agents. The agent
+uploads the screenshot with one HTTP request and pastes the returned markdown into the PR
+body. Files are deleted after 14 days.
 
-GitHub has no API for attaching an image to a PR description. A human drags the file into the
-text box. An AI coding agent that just took a screenshot has nowhere to put it. prunto is that
-somewhere, and it ships the skill file that teaches the agent to use it.
+GitHub has no API for attaching an image to a PR description, so an agent that has just
+taken a screenshot has nowhere to put it. prunto is that place, and it serves a skill file
+that tells the agent how to use it.
 
-![Drop a screenshot, copy the markdown, see it in admin](docs/demo.gif)
+![An agent session: asked for a PR with a screenshot, it captures the page, uploads it to prunto, shows the PR body, and posts it](docs/agent.png)
 
-## Why you want it
+## TL;DR
 
-- **Your agent opens PRs with screenshots in them.** Install the skill once. "Open a PR with a
-  screenshot of the new page" then does exactly that.
-- **Nothing to operate.** No Postgres, no Redis, no S3, no CDN account. One container, one
-  volume, SQLite. Starts in tens of milliseconds, idles at a few MB.
-- **Safe to expose.** Every upload needs a revocable token. Type is read from the bytes, never
-  the filename. Metadata is stripped without a decoder in the process. Files are served as
-  inert content and delete themselves.
-- **Yours.** Self-hosted, MIT, `FROM scratch`, no outbound requests at all.
+- Install the skill once and the agent attaches screenshots to PRs on its own.
+- Humans can use it too: `curl -F file=@shot.png` returns the URL and the markdown, and
+  there is a drop page.
+- One container with SQLite inside. No Postgres, Redis, S3 or CDN.
+- Files expire after 14 days. Nothing to clean up.
+- Every upload needs a token. File type is read from the bytes, metadata is stripped without
+  decoding, and files are served with `nosniff` and a `sandbox` CSP.
+- Tokens can be revoked, files removed and blocked by hash, and anyone can report content
+  from a public form. All of it is in `/admin`.
+- MIT, `FROM scratch` image, no outbound requests.
 
-## Try it in two minutes
+## Quick start
 
 ```bash
 docker run -d -p 3000:3000 -v prunto:/data \
@@ -34,16 +37,16 @@ docker run -d -p 3000:3000 -v prunto:/data \
 docker exec prunto /prunto token "my laptop"
 ```
 
-Open http://localhost:3000, paste the token, drop a screenshot. Or from a shell:
+Open http://localhost:3000, paste the token and drop a screenshot. Or from a shell:
 
 ```bash
 curl -H "Authorization: Bearer $PRUNTO_API_TOKEN" -F "file=@shot.png" \
   http://localhost:3000/api/v1/uploads
 ```
 
-You get back `url`, ready-made `markdown`, a `delete_url` and `expires_at`.
+The response contains `url`, `markdown`, `delete_url` and `expires_at`.
 
-## Give it to your agent
+## Agent setup
 
 ```bash
 mkdir -p ~/.claude/skills/prunto-screenshot
@@ -51,27 +54,29 @@ curl -sfo ~/.claude/skills/prunto-screenshot/SKILL.md http://localhost:3000/prun
 export PRUNTO_API_TOKEN=prunto_...
 ```
 
-The skill is served by your instance with your URLs in it. It tells the agent to look at the
-image before uploading, to show you the PR body before posting, and that anything permanent
-belongs in the repo, not here.
+The skill is served by your instance with its own URLs in it. It tells the agent to check the
+image for secrets before uploading, to show you the PR body before posting, and to commit
+anything that must outlive 14 days to the repo instead.
 
-## What it looks like
+## Screenshots
+
+![Drop a screenshot, copy the markdown, see it in admin](docs/demo.gif)
 
 ![The drop page after an upload: preview, markdown, copy and delete buttons](docs/upload.png)
 
 ![The admin page: tokens, uploads, abuse reports, blocklist, audit trail](docs/admin.png)
 
-## Read more
+## Documentation
 
 - [How it works](docs/HOW-IT-WORKS.md): the upload path, what is in the container, why
-  uploads are never decoded, the numbers.
+  uploads are never decoded, binary size and test coverage.
 - [API and configuration](docs/API.md): endpoints, limits, errors, environment variables.
 - [Using it from an agent](docs/AGENTS.md): install paths and what the skill enforces.
-- [Deploying on Coolify](COOLIFY.md): a real deployment behind a hostname and Cloudflare, and
-  the production checklist.
-- [Security](SECURITY.md): the threat model, what it does not defend against, how to report.
+- [Deploying on Coolify](COOLIFY.md): deployment behind a hostname and Cloudflare, and the
+  production checklist.
+- [Security](SECURITY.md): threat model, known limitations, how to report a vulnerability.
 
-Images are published as `:latest` from `master` and as `:1.2.3` / `:1.2` from every `v*` tag.
+Images are published as `:latest` from `master` and as `:1.2.3` / `:1.2` from every `vX.Y.Z` tag.
 
 ## Licence
 
