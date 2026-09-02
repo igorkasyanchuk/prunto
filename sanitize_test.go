@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// Every test here is one line from the enforcement list in the README. The same corpus is
+// Every test here is one line from the list in SECURITY.md. The same corpus is
 // meant to run against any port of this service - if a rule cannot be expressed as a test, it
 // is not a rule, it is a hope.
 
