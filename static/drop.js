@@ -64,12 +64,6 @@
     }
   });
 
-  $("copy").addEventListener("click", async () => {
-    await navigator.clipboard.writeText(markdown.value);
-    $("copy").textContent = "Copied";
-    setTimeout(() => ($("copy").textContent = "Copy markdown"), 1200);
-  });
-
   $("remove").addEventListener("click", async () => {
     if (!deleteURL) return;
     await fetch(deleteURL, {
