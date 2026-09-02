@@ -460,10 +460,10 @@ func TestSkillNamesOneTokenVariable(t *testing.T) {
 	if !strings.Contains(body, "$PRUNTO_API_TOKEN") {
 		t.Error("the skill does not use PRUNTO_API_TOKEN")
 	}
-	for _, gone := range []string{"PRIITO_API_TOKEN", "PRIITO_TOKEN", "PRUNTO_TOKEN:-", "priito-screenshot"} {
-		if strings.Contains(body, gone) {
-			t.Errorf("the skill still mentions %q", gone)
-		}
+	// One variable, not a fallback chain: the chain made the one command an agent runs
+	// unreadable, and nothing exports the older names any more.
+	if strings.Contains(body, "PRUNTO_TOKEN:-") {
+		t.Error("the skill still carries a token fallback chain")
 	}
 	if !strings.Contains(body, "http://prunto.test/api/v1/uploads") ||
 		!strings.Contains(body, "http://prunto.test/blobs/") {
