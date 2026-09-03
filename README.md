@@ -46,6 +46,16 @@ curl -H "Authorization: Bearer $PRUNTO_API_TOKEN" -F "file=@shot.png" \
 
 The response contains `url`, `markdown`, `delete_url` and `expires_at`.
 
+Hosted, with a disk and TLS: `docker-compose.yml` works as-is on Coolify, Dokploy, Easypanel,
+Portainer and any VPS, `captain-definition` covers CapRover, Fly, Railway, Koyeb and
+Northflank take the image with a volume, and Render takes the blueprint in `render.yaml`:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/igorkasyanchuk/prunto)
+
+Uploads and the database live on one volume, so a platform without a persistent disk (App
+Platform, Heroku, Vercel, Cloud Run, App Runner) loses everything on each deploy.
+[Deploying it](docs/DEPLOY.md) has the per-platform detail, Kubernetes included.
+
 ## Agent setup
 
 ```bash
@@ -72,6 +82,10 @@ anything that must outlive 14 days to the repo instead.
   uploads are never decoded, binary size and test coverage.
 - [API and configuration](docs/API.md): endpoints, limits, errors, environment variables.
 - [Using it from an agent](docs/AGENTS.md): install paths and what the skill enforces.
+- [Distributing the skill](docs/DISTRIBUTING.md): handing it to a team, one-command and
+  one-click installs, plugin marketplaces.
+- [Deploying it](docs/DEPLOY.md): one-click and one-command installs per platform, and the
+  platforms that cannot host it at all.
 - [Deploying on Coolify](COOLIFY.md): deployment behind a hostname and Cloudflare, and the
   production checklist.
 - [Security](SECURITY.md): threat model, known limitations, how to report a vulnerability.

@@ -41,3 +41,6 @@ installed.
 The skill is compatible with Claude Code and anything that loads reusable instructions from
 `~/.claude/skills`. For another agent, put the file wherever it reads instructions from; the
 content is plain Markdown.
+
+Handing the skill to other people - one-command installs, a plugin marketplace, committing it
+into a team repository - is in [DISTRIBUTING.md](DISTRIBUTING.md).

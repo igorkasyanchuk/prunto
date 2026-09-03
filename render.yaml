@@ -1,0 +1,27 @@
+# Render blueprint: https://render.com/deploy?repo=https://github.com/igorkasyanchuk/prunto
+#
+# The disk is the whole point. Without it the database and every upload are gone on the next
+# deploy, and disks need a paid instance type - there is no free tier that keeps files.
+services:
+  - type: web
+    name: prunto
+    runtime: docker
+    plan: starter
+    healthCheckPath: /up
+    disk:
+      name: prunto-data
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      # Render terminates TLS in front of the container, so the client address arrives in
+      # X-Forwarded-For and nowhere else.
+      - key: TRUST_PROXY
+        value: forwarded
+      # Asked for at deploy time: it has to match the hostname Render gives the service, or
+      # the one you point at it. A bare origin, no trailing slash.
+      - key: PRUNTO_BASE_URL
+        sync: false
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASSWORD
+        generateValue: true

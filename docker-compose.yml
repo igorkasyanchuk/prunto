@@ -1,0 +1,25 @@
+# One container, one volume. Everything prunto keeps - the database, the audit trail and the
+# uploads themselves - lives in /data, so the volume is the only thing worth backing up.
+#
+# Coolify, Dokploy, Portainer and plain Docker all consume this file directly:
+#   ADMIN_PASSWORD=... PRUNTO_BASE_URL=https://prunto.example.com docker compose up -d
+services:
+  prunto:
+    image: ghcr.io/igorkasyanchuk/prunto:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - prunto:/data
+    environment:
+      # A bare origin, scheme included, no trailing slash. It goes into delete URLs, blob URLs
+      # and the skill the agent downloads, so a wrong value produces links nobody can fetch.
+      PRUNTO_BASE_URL: ${PRUNTO_BASE_URL:-http://localhost:3000}
+      # Without both of these /admin is closed and there is no way to mint a token in a browser.
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD to something you did not reuse}
+      # none when the container is exposed directly, forwarded behind a reverse proxy you
+      # control, cloudflare when Cloudflare terminates TLS. Rate limits key on the result.
+      TRUST_PROXY: ${TRUST_PROXY:-none}
+volumes:
+  prunto:
