@@ -287,6 +287,21 @@ form.create { margin-bottom: .75rem; max-width: 24rem; }
 .steps { margin: 0; padding-left: 1.25rem; display: grid; gap: .35rem; font-size: .95rem; color: var(--muted); }
 .steps strong { color: var(--fg); }
 
+/* The one box on the page that must not be missed: orange, big, between the scene and the
+   problem section. --alert is its own colour so it stands apart from the green accent. */
+.notice {
+  --alert: #e3702b; --alert-soft: rgba(227, 112, 43, .14);
+  margin: 2.5rem 0 0; padding: 1.35rem 1.5rem; display: flex; gap: 1.1rem; align-items: flex-start;
+  border: 3px solid var(--alert); border-radius: 14px; background: var(--alert-soft); box-shadow: var(--shadow);
+  font-size: 1.05rem; line-height: 1.55;
+}
+@media (prefers-color-scheme: dark) { .notice { --alert: #f08a48; --alert-soft: rgba(240, 138, 72, .16); } }
+.notice-tag {
+  flex: none; padding: .3rem .75rem; border-radius: 999px; background: var(--alert); color: #fff;
+  font-size: .78rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; margin-top: .25rem;
+}
+.notice strong { display: block; font-size: 1.35rem; letter-spacing: -.01em; line-height: 1.25; margin-bottom: .35rem; color: var(--fg); }
+.notice a { color: var(--alert); font-weight: 700; }
 .footer {
   max-width: 60rem; margin: 0 auto; padding: 2rem 1.25rem 3rem; border-top: 1px solid var(--line);
   color: var(--muted); font-size: .85rem;
