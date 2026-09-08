@@ -57,6 +57,14 @@ func fingerprintStatic() string {
 
 var pages = template.Must(template.New("").Funcs(template.FuncMap{
 	"bytes": humanBytes,
+	// dict builds the argument map a sub-template takes; html/template has no literal for one.
+	"dict": func(kv ...any) map[string]any {
+		m := make(map[string]any, len(kv)/2)
+		for i := 0; i+1 < len(kv); i += 2 {
+			m[kv[i].(string)] = kv[i+1]
+		}
+		return m
+	},
 	"short": func(s string) string {
 		if len(s) > 12 {
 			return s[:12]
@@ -74,32 +82,32 @@ var skillTemplate = texttemplate.Must(texttemplate.ParseFS(templateDir, "templat
 // so a self-hosted instance hands out its own host and never someone else's.
 func (a *App) view() map[string]any {
 	return map[string]any{
-		"BaseURL":     a.Config.BaseURL,
-		"BlobBaseURL": a.Config.BlobBaseURL(),
-		"SkillURL":    a.Config.BaseURL + "/prunto-screenshot/SKILL.md",
-		"Retention":   humanDuration(DefaultRetention),
-		"MaxMB":       MaxBytes >> 20,
-		"Accept":      acceptAttribute(),
-		"Assets":      assetVersion,
+		"BaseURL":      a.Config.BaseURL,
+		"BlobBaseURL":  a.Config.BlobBaseURL(),
+		"SkillURL":     a.Config.BaseURL + "/prunto-screenshot/SKILL.md",
+		"Retention":    humanDuration(a.Config.Retention),
+		"HasRetention": a.Config.Retention > 0,
+		// Operator-supplied markup, deliberately unescaped: it is their own tracker tag.
+		"Analytics": template.HTML(a.Config.Analytics),
+		"MaxMB":     MaxBytes >> 20,
+		"Assets":    assetVersion,
 	}
 }
 
-func acceptAttribute() string {
-	types := make([]string, 0, len(Allowed))
-	for _, k := range Allowed {
-		types = append(types, k.ContentType)
-	}
-	return strings.Join(types, ",")
-}
-
+// humanDuration picks the largest unit that divides the value exactly, so an operator's
+// RETENTION=90m reads "90 minutes" rather than a truncated "1 hour". Zero is "never".
 func humanDuration(d time.Duration) string {
 	switch {
-	case d >= 24*time.Hour:
-		return plural(int(d.Hours())/24, "day")
-	case d >= time.Hour:
-		return plural(int(d.Hours()), "hour")
+	case d == 0:
+		return "never"
+	case d%(24*time.Hour) == 0:
+		return plural(int(d/(24*time.Hour)), "day")
+	case d%time.Hour == 0:
+		return plural(int(d/time.Hour), "hour")
+	case d%time.Minute == 0:
+		return plural(int(d/time.Minute), "minute")
 	default:
-		return plural(int(d.Minutes()), "minute")
+		return plural(int(d/time.Second), "second")
 	}
 }
 
@@ -112,11 +120,21 @@ func plural(n int, noun string) string {
 
 func (a *App) render(w http.ResponseWriter, name string, data map[string]any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// Blobs are served from this same origin now, so 'self' covers the drop page's preview and
-	// the policy needs no host in it at all.
-	w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; "+
-			"base-uri 'none'; form-action 'self'")
+	// Blobs are served from this same origin, so 'self' covers them and no page names a host,
+	// with one exception: the home page asks the GitHub API for the star count from the
+	// browser (stars.js). That allowance stays off /admin, which renders plaintext tokens, and
+	// off the abuse form. The server itself still makes no outbound request.
+	csp := "default-src 'self'; base-uri 'none'; form-action 'self'"
+	if name == "drop.html" {
+		// The analytics snippet's hosts get script (the tag) and connect (its beacon), on this
+		// page only, since only this page renders the snippet.
+		hosts := strings.Join(a.Config.AnalyticsOrigins, " ")
+		csp += "; connect-src 'self' https://api.github.com"
+		if hosts != "" {
+			csp += " " + hosts + "; script-src 'self' " + hosts
+		}
+	}
+	w.Header().Set("Content-Security-Policy", csp)
 	if err := pages.ExecuteTemplate(w, name, data); err != nil {
 		a.Log.Printf("rendering %s: %v", name, err)
 	}
@@ -203,7 +221,7 @@ func (a *App) handleBlob(w http.ResponseWriter, r *http.Request) {
 	// are served on, which makes this query the thing that honours the promised expires_at.
 	var contentType string
 	if err := a.DB.QueryRowContext(r.Context(),
-		`SELECT content_type FROM uploads WHERE object_key = ? AND expires_at > ?`,
+		`SELECT content_type FROM uploads WHERE object_key = ? AND (expires_at = 0 OR expires_at > ?)`,
 		key, time.Now().Unix()).Scan(&contentType); err != nil {
 		if err != sql.ErrNoRows {
 			a.Log.Printf("looking up blob %s: %v", key, err)

@@ -20,8 +20,11 @@ from that.
 - **Blobs are served as inert content.** `X-Content-Type-Options: nosniff`, the recorded
   content type, `Content-Disposition: inline` and `Content-Security-Policy: sandbox` on every
   blob response.
-- **Every upload has an owner.** No anonymous uploads. Tokens are 24 bytes of `crypto/rand`,
-  stored only as a SHA-256 digest, and refused if sent in a query string.
+- **Every upload has an owner.** No anonymous uploads. API tokens are 24 bytes of
+  `crypto/rand`, stored only as a SHA-256 digest, and refused if sent in a query string.
+- **Unguessable URLs.** A blob URL carries 12 random bytes (96 bits), a delete URL 24. Deleting
+  needs the delete URL plus any valid API token; the delete URL is the secret, the API token is
+  what makes the caller accountable.
 - **Quotas per token:** 10 MB per file, 20 uploads per hour, 200 MB per day, 50 megapixels per
   image. The body limit is enforced as the body is read.
 - **Admin is closed by default.** `/admin` returns 403 until both `ADMIN_USER` and
@@ -29,7 +32,9 @@ from that.
   logins rate-limited per address, `Cache-Control: no-store`.
 - **Nothing dials out.** The process makes no outbound request. The image is `FROM scratch`,
   runs as a non-root user, and carries no shell, no CA bundle and no libc.
-- **Expiry is enforced on read**, not just by the hourly sweep.
+- **Expiry is enforced on read**, not just by the hourly sweep. Files are kept until deleted
+  unless `RETENTION` or a per-upload `expires_in` gives them a lifetime; an upload can only ask
+  for less than the instance allows.
 - **Abuse path.** Public report form, hash blocklist so removed content cannot be re-uploaded,
   90-day append-only audit trail.
 

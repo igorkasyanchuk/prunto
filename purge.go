@@ -31,7 +31,7 @@ func (a *App) StartPurge(ctx context.Context, every time.Duration) {
 // erroring must not silently orphan bytes we have stopped tracking.
 func (a *App) PurgeExpired(ctx context.Context) {
 	rows, err := a.DB.QueryContext(ctx,
-		`SELECT id FROM uploads WHERE expires_at <= ? LIMIT 500`, time.Now().Unix())
+		`SELECT id FROM uploads WHERE expires_at > 0 AND expires_at <= ? LIMIT 500`, time.Now().Unix())
 	if err != nil {
 		a.Log.Printf("purge: %v", err)
 		return

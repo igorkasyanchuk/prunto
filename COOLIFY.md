@@ -66,7 +66,7 @@ image does not have. `docker exec` on the binary directly works, because it is s
 ssh root@your-server 'docker exec $(docker ps -qf name=prunto | head -1) /prunto token "my laptop"'
 ```
 
-Open the domain, paste the token into the drop page, drop a screenshot. Done.
+Hand the token to your agent, or upload from a shell with `curl`. Done.
 
 ---
 
@@ -106,7 +106,10 @@ faith.
 **Back up the volume.** `/data` holds everything: the database (tokens, the audit trail, the
 hash blocklist, every open report) *and* every uploaded file. Nothing here has a second copy
 anywhere, which is the price of dropping the bucket. Coolify can back the volume up on a
-schedule; the blobs expire in 14 days anyway, but the database cannot be rebuilt.
+schedule. Unless `RETENTION` is set the blobs never expire, and the database cannot be rebuilt
+either way. The
+database is SQLite in WAL mode, which changes how to copy it: see the backup note in
+[DEPLOY.md](docs/DEPLOY.md#before-you-call-any-of-these-done).
 
 ---
 

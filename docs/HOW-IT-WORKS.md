@@ -9,7 +9,7 @@ rows; the expiry sweep is a `time.Ticker` goroutine.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant A as Agent or browser
+    participant A as Agent or curl
     participant P as prunto
     participant D as /data volume
     participant G as GitHub
@@ -19,11 +19,11 @@ sequenceDiagram
     P->>P: sniff magic bytes, refuse anything not PNG/JPEG/GIF/WebP/MP4/WebM
     P->>P: strip EXIF/XMP/ICC chunks, truncate after end marker
     P->>P: refuse if SHA-256 is on the blocklist
-    P->>D: write blob, insert row (expires_at = now + 14d)
+    P->>D: write blob, insert row (expires_at from RETENTION or expires_in, else never)
     P-->>A: 201 { url, markdown, delete_url, expires_at }
     A->>G: gh pr create --body "...![](url)"
     G->>P: GET /blobs/:key
-    P->>D: expires_at > now? stream the file
+    P->>D: not expired? stream the file
     P-->>G: 200, recorded content type, nosniff, CSP sandbox
 ```
 
@@ -88,8 +88,8 @@ upload records the token that made it, so abuse always has an owner to cut off.
 | --- | --- |
 | Services required | none |
 | Direct dependencies | **1** (`modernc.org/sqlite`, pure Go, no cgo) |
-| Go source | 2,351 lines, plus 1,421 lines of tests |
-| Tests | 42, **72%** statement coverage, none touch the network |
+| Go source | 2,466 lines, plus 1,574 lines of tests |
+| Tests | 46, **72%** statement coverage, none touch the network |
 | Binary | **12.4 MB**, static, `CGO_ENABLED=0` |
 | Image | `FROM scratch`: the binary and your data volume, nothing else |
 | Cold start | ~45 ms from exec to first served request |

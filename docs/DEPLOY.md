@@ -166,6 +166,12 @@ are bytes prunto never pays for.
 - Restart the container and check the token and the file are still there. This is the step
   that catches a missing volume, and the only one that still matters a week later.
 - Back the volume up. It holds the database and every upload, and there is no second copy.
+  The database is SQLite in WAL mode: stop the container for the copy, or take `prunto.db`,
+  `prunto.db-wal` and `prunto.db-shm` together, or the newest writes are missing.
+- Size the disk. A token may store 200 MB a day and files are kept until deleted by default,
+  so set `RETENTION` or watch the storage figures in `/admin`. `30d` bounds one busy token at
+  6 GB, which already exceeds the 5 GB in the manifests: that size suits a team whose agents
+  upload a few screenshots a day, not one that saturates the quota.
 
 If the first boot log says permission denied under `/data`, the platform attached the volume
 as root while the image runs as uid 65532. That is a platform-level fix - some let you set the

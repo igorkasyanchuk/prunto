@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Admin &middot; prunto</title>
+<title>Admin &middot; Prunto</title>
 <link rel="icon" href="/static/favicon.svg?v={{.Assets}}" type="image/svg+xml">
 <link rel="alternate icon" href="/static/favicon-32.png?v={{.Assets}}" sizes="32x32">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{.Assets}}">
@@ -12,7 +12,13 @@
 </head>
 <body>
 <main class="wrap wide">
-  <h1>prunto admin</h1>
+  <h1>Prunto admin</h1>
+  <p class="lede">
+    <strong>{{.Stats.Uploads}}</strong> files stored &middot;
+    <strong>{{bytes .Stats.Bytes}}</strong> on disk &middot;
+    <strong>{{.Stats.Tokens}}</strong> active tokens &middot;
+    <strong>{{.Stats.Blocked}}</strong> blocked hashes
+  </p>
 
   {{if .NewToken}}
   <section class="new-token" aria-labelledby="new-token-title">
@@ -27,7 +33,7 @@
       <button type="button" id="copy-token" data-copy-target="new-token-value">Copy</button>
     </div>
     <p class="new-token-hint">
-      Use it as <code>Authorization: Bearer &lt;token&gt;</code>, or paste it into the drop page.
+      Use it as <code>Authorization: Bearer &lt;token&gt;</code>, or give it to your agent.
     </p>
   </section>
   {{end}}
@@ -64,6 +70,7 @@
   {{else}}<p class="muted">Nothing open.</p>{{end}}
 
   <h2>Uploads</h2>
+  {{template "pager" (dict "P" .UploadsPager "Param" "uploads" "Other" "events" "OtherPage" .EventsPager.Page)}}
   <table>
     <tr><th>File</th><th>Type</th><th>Size</th><th>Token</th><th>Expires</th><th></th></tr>
     {{range .Uploads}}
@@ -72,7 +79,7 @@
       <td>{{.ContentType}}</td>
       <td>{{bytes .ByteSize}}</td>
       <td>{{if .TokenLabel}}{{.TokenLabel}} <span class="mono muted">#{{.APITokenID.Int64}}</span>{{else}}&mdash;{{end}}</td>
-      <td>{{stamp .ExpiresAt}}</td>
+      <td>{{if .Expires}}{{stamp .ExpiresAt}}{{else}}<span class="muted">never</span>{{end}}</td>
       <td>
         <form method="post" action="/admin/actions" class="inline">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
@@ -92,11 +99,12 @@
     <button name="do" value="create">Create token</button>
   </form>
   <table>
-    <tr><th>Label</th><th>Uploads</th><th>Last used</th><th>Created</th><th></th></tr>
+    <tr><th>Label</th><th>Stored</th><th>Size</th><th>Last used</th><th>Created</th><th></th></tr>
     {{range .Tokens}}
     <tr>
       <td>{{.Label}} <span class="mono muted">#{{.ID}}</span></td>
       <td>{{.Uploads}}</td>
+      <td>{{bytes .Bytes}}</td>
       <td>{{if .LastUsedAt}}{{stamp .LastUsedAt}}{{else}}<span class="muted">never</span>{{end}}</td>
       <td>{{stamp .CreatedAt}}</td>
       <td>
@@ -133,6 +141,7 @@
 
   <h2>Audit trail</h2>
   <p class="muted">Append-only, kept for 90 days. It outlives the file it describes.</p>
+  {{template "pager" (dict "P" .EventsPager "Param" "events" "Other" "uploads" "OtherPage" .UploadsPager.Page)}}
   <table>
     <tr><th>Action</th><th>Hash</th><th>Type</th><th>Size</th><th>Address</th><th>When</th></tr>
     {{range .Events}}
@@ -149,3 +158,13 @@
 </main>
 </body>
 </html>{{end}}
+
+{{/* Newer / Older links for one table, carrying the other table's page along so paging one
+     does not reset the other. */}}
+{{define "pager"}}{{if or .P.Prev .P.Next}}
+<nav class="pager" aria-label="{{.Param}} pages">
+  {{if .P.Prev}}<a href="/admin?{{.Param}}={{.P.Prev}}&{{.Other}}={{.OtherPage}}">&larr; Newer</a>{{else}}<span class="muted">&larr; Newer</span>{{end}}
+  <span class="muted">page {{.P.Page}}</span>
+  {{if .P.Next}}<a href="/admin?{{.Param}}={{.P.Next}}&{{.Other}}={{.OtherPage}}">Older &rarr;</a>{{else}}<span class="muted">Older &rarr;</span>{{end}}
+</nav>
+{{end}}{{end}}

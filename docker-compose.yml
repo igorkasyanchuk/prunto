@@ -21,5 +21,9 @@ services:
       # none when the container is exposed directly, forwarded behind a reverse proxy you
       # control, cloudflare when Cloudflare terminates TLS. Rate limits key on the result.
       TRUST_PROXY: ${TRUST_PROXY:-none}
+      # How long an upload lives: never (default), 30d, 12h. Each upload may ask for less.
+      RETENTION: ${RETENTION:-never}
+      # Optional: a tracker <script> tag for the home page, e.g. Umami or Plausible.
+      ANALYTICS_HTML: ${ANALYTICS_HTML:-}
 volumes:
   prunto:

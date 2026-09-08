@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -34,44 +33,49 @@ type Upload struct {
 
 func (u Upload) Video() bool { return strings.HasPrefix(u.ContentType, "video/") }
 
-// Markdown is the string people paste. GitHub renders a <video> tag in a PR body but shows
-// nothing for ![](clip.mp4), so the two types need different markup.
+// Markdown is the string people paste. GitHub's sanitiser strips a <video> tag whose source is
+// not one of its own upload hosts (verified through the /markdown API: the tag renders as an
+// empty paragraph), and ![](clip.mp4) shows nothing either, so a video is handed out as a
+// plain link. A GIF is the format that plays inline.
 func (u Upload) Markdown(url string) string {
 	if u.Video() {
-		return fmt.Sprintf(`<video src=%q controls></video>`, url)
+		return "[Watch the video](" + url + ")"
 	}
 	return "![](" + url + ")"
 }
 
-var retentionPattern = regexp.MustCompile(`^(\d+)([smhd]?)$`)
-
-// RetentionFrom parses "30m", "6h", "7d" or a plain number of seconds. Anything longer than
-// the default is capped rather than refused.
-func RetentionFrom(value string) (time.Duration, error) {
-	value = strings.ToLower(strings.TrimSpace(value))
-	if value == "" {
-		return DefaultRetention, nil
+// RetentionFrom parses an upload's expires_in against the instance retention. Anything longer
+// than that is capped rather than refused; empty means the instance default. Zero out means
+// the upload never expires, which is only reachable when the instance keeps files forever and
+// the upload did not ask for less.
+func RetentionFrom(value string, instance time.Duration) (time.Duration, error) {
+	if strings.TrimSpace(value) == "" {
+		return instance, nil
 	}
-	m := retentionPattern.FindStringSubmatch(value)
-	if m == nil {
-		return 0, ErrRejected{"expires_in should look like 30m, 6h or 7d"}
-	}
-	amount, err := strconv.ParseInt(m[1], 10, 64)
+	d, err := parseDuration(value)
 	if err != nil {
-		return 0, ErrRejected{"expires_in is out of range"}
+		return 0, ErrRejected{"expires_in " + err.Error()}
 	}
-	unit := map[string]time.Duration{
-		"": time.Second, "s": time.Second, "m": time.Minute, "h": time.Hour, "d": 24 * time.Hour,
-	}[m[2]]
-
-	d := time.Duration(amount) * unit
-	return min(max(d, MinRetention), DefaultRetention), nil
+	// 0 means "no expiry of my own", the same spelling RETENTION accepts, so it falls back to
+	// the instance value rather than being raised to the one-minute floor.
+	if d == 0 {
+		return instance, nil
+	}
+	d = max(d, MinRetention)
+	if instance > 0 {
+		d = min(d, instance)
+	}
+	return d, nil
 }
+
+// Expires reports whether the upload has an expiry at all. A zero ExpiresAt (stored as 0) is
+// an upload kept until someone deletes it.
+func (u Upload) Expires() bool { return !u.ExpiresAt.IsZero() }
 
 // CreateUpload validates, stores and records. Every ErrRejected it returns is meant to be
 // shown to the uploader as-is.
 func (a *App) CreateUpload(ctx context.Context, body []byte, filename, ip string, tokenID sql.NullInt64, expiresIn string) (Upload, error) {
-	retention, err := RetentionFrom(expiresIn)
+	retention, err := RetentionFrom(expiresIn, a.Config.Retention)
 	if err != nil {
 		return Upload{}, err
 	}
@@ -111,8 +115,10 @@ func (a *App) CreateUpload(ctx context.Context, body []byte, filename, ip string
 		Filename:    displayFilename(filename),
 		IP:          ip,
 		APITokenID:  tokenID,
-		ExpiresAt:   time.Now().Add(retention).UTC(),
 		CreatedAt:   time.Now().UTC(),
+	}
+	if retention > 0 {
+		u.ExpiresAt = time.Now().Add(retention).UTC()
 	}
 	u.ObjectKey = u.Token + "." + kind.Ext
 
@@ -125,7 +131,7 @@ func (a *App) CreateUpload(ctx context.Context, body []byte, filename, ip string
 		                      byte_size, filename, ip, api_token_id, expires_at, created_at)
 		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 		u.Token, u.DeleteToken, u.ObjectKey, u.ContentType, u.ContentHash, u.ByteSize,
-		u.Filename, u.IP, u.APITokenID, unix(u.ExpiresAt), unix(u.CreatedAt))
+		u.Filename, u.IP, u.APITokenID, expiresUnix(u.ExpiresAt), unix(u.CreatedAt))
 	if err != nil {
 		// The file is already on disk; leave no orphan behind.
 		_ = a.Store.Delete(u.ObjectKey)
@@ -179,9 +185,26 @@ func (a *App) FindUploadBy(ctx context.Context, column, value string) (Upload, e
 		return Upload{}, err
 	}
 	u.Filename, u.IP = filename.String, ip.String
-	u.ExpiresAt = time.Unix(expires, 0).UTC()
+	u.ExpiresAt = expiresTime(expires)
 	u.CreatedAt = time.Unix(created, 0).UTC()
 	return u, nil
+}
+
+// expires_at is NOT NULL in a schema already deployed, so "never" is stored as 0 rather than
+// NULL; every query on the column has to treat 0 as unexpired, and these two keep the mapping
+// in one place.
+func expiresUnix(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
+}
+
+func expiresTime(v int64) time.Time {
+	if v == 0 {
+		return time.Time{}
+	}
+	return time.Unix(v, 0).UTC()
 }
 
 // displayFilename keeps the client's name for display only. It never reaches the object key.

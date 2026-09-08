@@ -10,6 +10,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"testing"
+	"time"
 )
 
 // Every test here is one line from the list in SECURITY.md. The same corpus is
@@ -295,20 +296,23 @@ func TestTruncatedInputIsRejectedNotPanicking(t *testing.T) {
 	}
 }
 
+const month = 30 * 24 * time.Hour
+
 func TestRetentionIsCappedNotRefused(t *testing.T) {
 	cases := []struct {
 		in   string
 		want string
 	}{
-		{"", "336h0m0s"},
+		{"", "720h0m0s"}, // empty means the instance value
 		{"30m", "30m0s"},
 		{"6h", "6h0m0s"},
 		{"7d", "168h0m0s"},
-		{"365d", "336h0m0s"}, // capped at the default, not refused
+		{"365d", "720h0m0s"}, // capped at the instance retention, not refused
 		{"1", "1m0s"},        // below the floor, raised to it
+		{"0", "720h0m0s"},    // 0 means no expiry of its own: the instance value
 	}
 	for _, c := range cases {
-		got, err := RetentionFrom(c.in)
+		got, err := RetentionFrom(c.in, month)
 		if err != nil {
 			t.Fatalf("RetentionFrom(%q): %v", c.in, err)
 		}
@@ -316,8 +320,77 @@ func TestRetentionIsCappedNotRefused(t *testing.T) {
 			t.Errorf("RetentionFrom(%q) = %s, want %s", c.in, got, c.want)
 		}
 	}
-	if _, err := RetentionFrom("soon"); err == nil {
+	if _, err := RetentionFrom("soon", month); err == nil {
 		t.Error("a nonsense expires_in was accepted")
+	}
+	// The cap is the instance's, not the compiled-in default.
+	if got, _ := RetentionFrom("", 2*time.Hour); got != 2*time.Hour {
+		t.Errorf("empty expires_in = %s, want the instance retention", got)
+	}
+	if got, _ := RetentionFrom("7d", 2*time.Hour); got != 2*time.Hour {
+		t.Errorf("7d against a 2h instance = %s, want 2h", got)
+	}
+	// A forever instance: empty stays forever, an explicit value is honoured uncapped.
+	if got, _ := RetentionFrom("", 0); got != 0 {
+		t.Errorf("empty expires_in on a forever instance = %s, want 0", got)
+	}
+	if got, _ := RetentionFrom("365d", 0); got != 365*24*time.Hour {
+		t.Errorf("365d on a forever instance = %s, want 365 days", got)
+	}
+	if got, _ := RetentionFrom("0", 0); got != 0 {
+		t.Errorf("0 on a forever instance = %s, want 0 (never)", got)
+	}
+	// An amount that would overflow int64 nanoseconds is refused, not wrapped into a
+	// negative that the floor would then raise to one minute.
+	for _, in := range []string{"10000000000", "200000d", "3000000h"} {
+		if _, err := RetentionFrom(in, month); err == nil {
+			t.Errorf("RetentionFrom(%q) accepted an overflowing amount", in)
+		}
+	}
+}
+
+func TestHumanDurationIsExact(t *testing.T) {
+	for in, want := range map[time.Duration]string{
+		0: "never", 30 * 24 * time.Hour: "30 days", 24 * time.Hour: "1 day", 36 * time.Hour: "36 hours",
+		time.Hour: "1 hour", 90 * time.Minute: "90 minutes", time.Minute: "1 minute", 90 * time.Second: "90 seconds",
+	} {
+		if got := humanDuration(in); got != want {
+			t.Errorf("humanDuration(%s) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestMarkdownPerType(t *testing.T) {
+	const u = "https://prunto.test/blobs/k.ext"
+	if got := (Upload{ContentType: "image/png"}).Markdown(u); got != "![]("+u+")" {
+		t.Errorf("image markdown = %q", got)
+	}
+	// GitHub strips an external <video> tag, so a video is a link, never a tag.
+	if got := (Upload{ContentType: "video/mp4"}).Markdown(u); got != "[Watch the video]("+u+")" {
+		t.Errorf("video markdown = %q", got)
+	}
+}
+
+func TestRetentionEnv(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+	// Pinned so a developer's own exported values cannot fail a test about RETENTION.
+	t.Setenv("PRUNTO_BASE_URL", "http://prunto.test")
+	t.Setenv("TRUST_PROXY", "none")
+	for in, want := range map[string]time.Duration{"": 0, "never": 0, " Never ": 0, "0": 0, "7d": 7 * 24 * time.Hour, "90m": 90 * time.Minute, "3600": time.Hour} {
+		t.Setenv("RETENTION", in)
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("RETENTION=%q: %v", in, err)
+		}
+		if cfg.Retention != want {
+			t.Errorf("RETENTION=%q = %s, want %s", in, cfg.Retention, want)
+		}
+	}
+	for _, in := range []string{"soon", "30s", "-1d", "1099511627776d", "99999999999999999999"} {
+		t.Setenv("RETENTION", in)
+		if _, err := LoadConfig(); err == nil {
+			t.Errorf("RETENTION=%q was accepted", in)
+		}
 	}
 }
 

@@ -54,8 +54,8 @@ type Kind struct {
 // Allowed is the entire allowlist, keyed by what we sniff out of the bytes.
 //
 // No SVG: it carries JavaScript. No PDF: a phishing and malware carrier with an entirely
-// separate threat model. Two video containers and no more - MP4 and WebM are what a browser
-// plays and what GitHub renders from a <video> tag, so a third only widens the surface.
+// separate threat model. Two video containers and no more - MP4 and WebM are what every
+// browser plays natively, so a third only widens the surface.
 var Allowed = []Kind{
 	{"image/png", "png", false},
 	{"image/jpeg", "jpg", false},

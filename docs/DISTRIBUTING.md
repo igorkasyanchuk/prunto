@@ -12,12 +12,12 @@ Everything below assumes `https://prunto.example.com`. Substitute your own host.
 
 ## 1. Send the link
 
-The lowest-effort distribution there is. The drop page already carries install snippets with
+The lowest-effort distribution there is. The home page already carries install snippets with
 copy buttons and a token link, so a message with two URLs is a complete handover:
 
 ```text
 Screenshots for PRs: https://prunto.example.com
-Install snippet + token are on that page. Skill: https://prunto.example.com/prunto-screenshot/SKILL.md
+Install snippet is on that page; ask me for a token. Skill: https://prunto.example.com/prunto-screenshot/SKILL.md
 ```
 
 Nothing to maintain, nothing to version. Use this unless you have a reason not to.
@@ -56,7 +56,7 @@ file, and piping a remote script into a shell buys you nothing but a larger blas
 
 ## 3. Let the agent install it
 
-For people who would rather talk to their agent than open a terminal. The drop page has this
+For people who would rather talk to their agent than open a terminal. The home page has this
 prompt behind a copy button; paste it into any assistant that can run shell commands:
 
 ```text

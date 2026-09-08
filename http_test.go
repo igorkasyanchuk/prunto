@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
@@ -24,6 +25,9 @@ func newTestApp(t *testing.T) *App {
 	t.Setenv("PRUNTO_BASE_URL", "http://prunto.test")
 	t.Setenv("ADMIN_USER", "admin")
 	t.Setenv("ADMIN_PASSWORD", "hunter2")
+	// Pinned so a developer's own exported values cannot change what the suite tests.
+	t.Setenv("RETENTION", "")
+	t.Setenv("TRUST_PROXY", "")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -682,19 +686,28 @@ func TestAdminLoadsWithAnOpenReport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	done := make(chan int, 1)
+	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		r := httptest.NewRequest(http.MethodGet, "http://prunto.test/admin", nil)
 		r.SetBasicAuth("admin", "hunter2")
 		rec := httptest.NewRecorder()
 		app.Routes().ServeHTTP(rec, r)
-		done <- rec.Code
+		done <- rec
 	}()
 
 	select {
-	case code := <-done:
-		if code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", code)
+	case rec := <-done:
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		// The storage figures: one file on disk, its size, and the same again on its token.
+		s, err := app.stats(context.Background())
+		if err != nil || s.Uploads != 1 || s.Bytes != upload.ByteSize || s.Tokens != 1 {
+			t.Errorf("stats = %+v, %v; want 1 upload of %d bytes and 1 token", s, err, upload.ByteSize)
+		}
+		tokens, err := app.activeTokens(context.Background())
+		if err != nil || len(tokens) != 1 || tokens[0].Uploads != 1 || tokens[0].Bytes != upload.ByteSize {
+			t.Errorf("activeTokens = %+v, %v; want one token holding %d bytes", tokens, err, upload.ByteSize)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("/admin hung: a nested query starved on the single connection")
@@ -729,8 +742,9 @@ func TestBlobServesRanges(t *testing.T) {
 	}
 }
 
-// Blobs are served from this app's own origin, so the drop page's preview is covered by 'self'
-// and the policy should name no host at all - a stray host here would be a leftover.
+// Blobs are served from this app's own origin, so 'self' covers them; the only foreign host the
+// policy may name is the GitHub API the star counter fetches from the browser, and only on the
+// page that loads the counter: /admin renders plaintext tokens and must keep every connect shut.
 func TestDropPageCSPIsSelfOnly(t *testing.T) {
 	app := newTestApp(t)
 
@@ -739,8 +753,7 @@ func TestDropPageCSPIsSelfOnly(t *testing.T) {
 
 	csp := w.Header().Get("Content-Security-Policy")
 	for _, want := range []string{
-		"img-src 'self' blob: data:;",
-		"media-src 'self' blob:;",
+		"connect-src 'self' https://api.github.com",
 		"default-src 'self'",
 		"base-uri 'none'",
 	} {
@@ -748,8 +761,23 @@ func TestDropPageCSPIsSelfOnly(t *testing.T) {
 			t.Fatalf("CSP %q does not contain %q", csp, want)
 		}
 	}
-	if strings.Contains(csp, "http") {
-		t.Fatalf("CSP names a host, but blobs are same-origin now: %q", csp)
+	// Blobs are same-origin, so the GitHub API is the only host allowed to appear, and the
+	// blob:/data: sources the old upload preview needed went with it.
+	if strings.Count(csp, "http") != 1 || !strings.Contains(csp, "https://api.github.com") {
+		t.Fatalf("CSP names a host other than the GitHub API: %q", csp)
+	}
+	if strings.Contains(csp, "blob:") || strings.Contains(csp, "data:") {
+		t.Fatalf("CSP still allows blob: or data: with nothing left to use them: %q", csp)
+	}
+
+	for _, path := range []string{"/admin", "/abuse_reports/new"} {
+		r := httptest.NewRequest(http.MethodGet, "http://prunto.test"+path, nil)
+		r.SetBasicAuth("admin", "hunter2")
+		w := httptest.NewRecorder()
+		app.Routes().ServeHTTP(w, r)
+		if csp := w.Header().Get("Content-Security-Policy"); strings.Contains(csp, "http") {
+			t.Errorf("%s CSP names a host: %q", path, csp)
+		}
 	}
 }
 
@@ -904,6 +932,8 @@ func TestBaseURLMustBeABareOrigin(t *testing.T) {
 	}
 	t.Setenv("DATA_DIR", t.TempDir())
 	t.Setenv("PRUNTO_BASE_URL", "https://prunto.test/")
+	t.Setenv("RETENTION", "")
+	t.Setenv("TRUST_PROXY", "")
 	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -1030,8 +1060,155 @@ func TestForwardedModeUsesTheLastHop(t *testing.T) {
 
 func TestTrustProxyIsValidatedAtBoot(t *testing.T) {
 	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("RETENTION", "")
 	t.Setenv("TRUST_PROXY", "yes")
 	if _, err := LoadConfig(); err == nil {
 		t.Error("an unknown TRUST_PROXY value should be refused at boot, not silently treated as none")
+	}
+}
+
+// With no RETENTION the file has no expiry: the API says null, the blob keeps serving, and the
+// sweep leaves it alone. expires_at is stored as 0 for these, so every query that compares the
+// column has to be checked against one.
+func TestUploadWithoutRetentionNeverExpires(t *testing.T) {
+	app := newTestApp(t)
+	token, _ := CreateToken(context.Background(), app.DB, "test")
+
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, uploadRequest(t, samplePNG(t, 4, 4), "a.png", token, nil))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := payload["expires_at"]; !ok || v != nil {
+		t.Errorf("expires_at = %v, want null", v)
+	}
+	upload, err := app.FindUploadBy(context.Background(), "id", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upload.Expires() {
+		t.Errorf("ExpiresAt = %s, want zero", upload.ExpiresAt)
+	}
+
+	app.PurgeExpired(context.Background())
+	url, _ := payload["url"].(string)
+	w = httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, url, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("blob after the sweep = %d, want 200", w.Code)
+	}
+
+	// An explicit expires_in still works on a forever instance and is not capped.
+	w = httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, uploadRequest(t, sampleGIF(t, 2), "b.gif", token, map[string]string{"expires_in": "365d"}))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body)
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	at, _ := time.Parse(time.RFC3339, payload["expires_at"].(string))
+	if d := time.Until(at); d < 364*24*time.Hour || d > 366*24*time.Hour {
+		t.Errorf("expires_at = %s, want about a year out", at)
+	}
+}
+
+// The uploads and audit tables page at AdminPageSize rows: one past the page decides whether
+// "Older" is offered, and paging one table carries the other table's page along.
+func TestAdminPagesUploadsAndEvents(t *testing.T) {
+	app := newTestApp(t)
+	now := time.Now().Unix()
+	for i := 0; i < AdminPageSize+5; i++ {
+		if _, err := app.DB.Exec(
+			`INSERT INTO uploads (token, delete_token, object_key, content_type, content_hash, byte_size, expires_at, created_at)
+			 VALUES (?,?,?,?,?,?,?,?)`,
+			fmt.Sprintf("t%d", i), fmt.Sprintf("d%d", i), fmt.Sprintf("k%d.png", i), "image/png", "h", 1, 0, now-int64(i)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := app.DB.Exec(
+			`INSERT INTO upload_events (action, content_hash, created_at) VALUES (?,?,?)`, "created", "h", now-int64(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	get := func(query string) string {
+		r := httptest.NewRequest(http.MethodGet, "http://prunto.test/admin"+query, nil)
+		r.SetBasicAuth("admin", "hunter2")
+		w := httptest.NewRecorder()
+		app.Routes().ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET /admin%s = %d", query, w.Code)
+		}
+		return w.Body.String()
+	}
+
+	first := get("")
+	if strings.Count(first, "<td class=\"mono\"><a href=") != AdminPageSize {
+		t.Errorf("page 1 shows %d uploads, want %d", strings.Count(first, "<td class=\"mono\"><a href="), AdminPageSize)
+	}
+	// html/template leaves a bare & in an href it has normalised, so match that form.
+	if !strings.Contains(first, `href="/admin?uploads=2&events=1"`) || !strings.Contains(first, `href="/admin?events=2&uploads=1"`) {
+		t.Errorf("page 1 lacks the Older links for both tables")
+	}
+	if !strings.Contains(first, "k0.png") || strings.Contains(first, fmt.Sprintf("k%d.png", AdminPageSize)) {
+		t.Errorf("page 1 does not hold exactly the newest %d uploads", AdminPageSize)
+	}
+
+	second := get("?uploads=2&events=2")
+	if strings.Count(second, "<td class=\"mono\"><a href=") != 5 {
+		t.Errorf("page 2 shows %d uploads, want 5", strings.Count(second, "<td class=\"mono\"><a href="))
+	}
+	if strings.Contains(second, "uploads=3") || strings.Contains(second, "events=3") {
+		t.Errorf("page 2 offers a third page that does not exist")
+	}
+	if !strings.Contains(second, `href="/admin?uploads=1&events=2"`) {
+		t.Errorf("page 2 lacks the Newer link that keeps the events page")
+	}
+	// Out-of-range page numbers fall back to page 1: same rows, same links.
+	if junk := get("?uploads=0&events=-3"); !strings.Contains(junk, "k0.png") || !strings.Contains(junk, `href="/admin?uploads=2&events=1"`) {
+		t.Errorf("out-of-range page numbers should fall back to page 1")
+	}
+}
+
+// ANALYTICS_HTML is the operator's own tracker tag: rendered raw on the home page, with its
+// host allowed for scripts and beacons there, and absent from every other page.
+func TestAnalyticsSnippetIsHomePageOnly(t *testing.T) {
+	const tag = `<script defer src="https://umami.example.com/script.js" data-website-id="abc"></script>`
+	t.Setenv("ANALYTICS_HTML", tag)
+	app := newTestApp(t)
+	if got := app.Config.AnalyticsOrigins; len(got) != 1 || got[0] != "https://umami.example.com" {
+		t.Fatalf("AnalyticsOrigins = %v", got)
+	}
+
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://prunto.test/", nil))
+	if !strings.Contains(w.Body.String(), tag) {
+		t.Error("home page does not carry the snippet verbatim")
+	}
+	csp := w.Header().Get("Content-Security-Policy")
+	for _, want := range []string{"script-src 'self' https://umami.example.com", "connect-src 'self' https://api.github.com https://umami.example.com"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("home CSP %q lacks %q", csp, want)
+		}
+	}
+
+	for _, path := range []string{"/admin", "/abuse_reports/new"} {
+		r := httptest.NewRequest(http.MethodGet, "http://prunto.test"+path, nil)
+		r.SetBasicAuth("admin", "hunter2")
+		w := httptest.NewRecorder()
+		app.Routes().ServeHTTP(w, r)
+		if strings.Contains(w.Body.String(), "umami") || strings.Contains(w.Header().Get("Content-Security-Policy"), "umami") {
+			t.Errorf("%s carries the analytics snippet or its host", path)
+		}
+	}
+}
+
+func TestScriptOrigins(t *testing.T) {
+	got := scriptOrigins(`<script src='https://A.example.com/x.js'></script><script src="https://a.example.com/y.js"></script><img src="http://plain.example.com/p.gif">`)
+	if len(got) != 1 || got[0] != "https://a.example.com" {
+		t.Errorf("scriptOrigins = %v, want one lowercased https origin", got)
 	}
 }

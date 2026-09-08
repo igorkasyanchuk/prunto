@@ -173,7 +173,59 @@ type adminToken struct {
 	Label      string
 	LastUsedAt *time.Time
 	CreatedAt  time.Time
-	Uploads    int
+	Uploads    int   // files stored right now, not lifetime
+	Bytes      int64 // same: what is on the volume for this token
+}
+
+// adminStats is what is on the volume right now: live rows only, so it tracks the disk.
+type adminStats struct {
+	Uploads int
+	Bytes   int64
+	Tokens  int
+	Blocked int
+}
+
+// Counted here rather than with len() over the listings, which stop at 100 rows. Only rows
+// that would still be served count: a file past expires_at that the sweep has not reached is
+// already refused by handleBlob, so it should not be on the dashboard's disk figure either.
+//
+// ponytail: one full scan of uploads per dashboard load for the totals; activeTokens' per-token
+// sums ride the uploads_api_token_id index. Fine at self-hosted scale.
+func (a *App) stats(ctx context.Context) (adminStats, error) {
+	var s adminStats
+	err := a.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*), COALESCE(SUM(byte_size), 0),
+		        (SELECT COUNT(*) FROM api_tokens WHERE revoked_at IS NULL),
+		        (SELECT COUNT(*) FROM blocked_hashes)
+		 FROM uploads WHERE expires_at = 0 OR expires_at > ?`, time.Now().Unix()).
+		Scan(&s.Uploads, &s.Bytes, &s.Tokens, &s.Blocked)
+	return s, err
+}
+
+// AdminPageSize is the row count per page for the uploads and audit tables.
+const AdminPageSize = 50
+
+// pager is one paged table's position: which page, and whether there is a page either side.
+// Offset paging on a single-writer SQLite file: no counts, the query fetches one row past the
+// page to learn whether "Older" exists.
+type pager struct {
+	Page       int
+	Prev, Next int // 0 when there is no such page
+}
+
+// pageParam reads ?name=N, treating anything unparseable or below 1 as page 1.
+func pageParam(r *http.Request, name string) int {
+	n, _ := strconv.Atoi(r.URL.Query().Get(name))
+	return max(n, 1)
+}
+
+// paged trims a page-plus-one fetch to the page and reports what lies either side.
+func paged[T any](rows []T, page int) ([]T, pager) {
+	p := pager{Page: page, Prev: page - 1}
+	if len(rows) > AdminPageSize {
+		rows, p.Next = rows[:AdminPageSize], page+1
+	}
+	return rows, p
 }
 
 type adminEvent struct {
@@ -195,7 +247,7 @@ func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load the dashboard", http.StatusInternalServerError)
 		return
 	}
-	uploads, err := a.recentUploads(ctx)
+	uploads, err := a.recentUploads(ctx, pageParam(r, "uploads"))
 	if err != nil {
 		a.Log.Printf("admin: uploads: %v", err)
 		http.Error(w, "Could not load the dashboard", http.StatusInternalServerError)
@@ -207,7 +259,7 @@ func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load the dashboard", http.StatusInternalServerError)
 		return
 	}
-	events, err := a.recentEvents(ctx)
+	events, err := a.recentEvents(ctx, pageParam(r, "events"))
 	if err != nil {
 		a.Log.Printf("admin: events: %v", err)
 		http.Error(w, "Could not load the dashboard", http.StatusInternalServerError)
@@ -220,10 +272,18 @@ func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	stats, err := a.stats(ctx)
+	if err != nil {
+		a.Log.Printf("admin: stats: %v", err)
+		http.Error(w, "Could not load the dashboard", http.StatusInternalServerError)
+		return
+	}
+
+	view["Stats"] = stats
 	view["Reports"] = reports
-	view["Uploads"] = uploads
+	view["Uploads"], view["UploadsPager"] = paged(uploads, pageParam(r, "uploads"))
 	view["Tokens"] = tokens
-	view["Events"] = events
+	view["Events"], view["EventsPager"] = paged(events, pageParam(r, "events"))
 	view["Blocked"] = blocked
 	view["NewToken"] = a.takeNewToken(w, r)
 	view["CSRF"] = a.issueCSRFToken(w, r)
@@ -351,13 +411,16 @@ func (a *App) openReports(ctx context.Context) ([]adminReport, error) {
 	return out, nil
 }
 
-func (a *App) recentUploads(ctx context.Context) ([]Upload, error) {
+// recentUploads returns up to AdminPageSize+1 rows for the page; the extra row, if present,
+// tells paged() there is an older page.
+func (a *App) recentUploads(ctx context.Context, page int) ([]Upload, error) {
 	rows, err := a.DB.QueryContext(ctx,
 		`SELECT u.id, u.token, u.delete_token, u.object_key, u.content_type, u.content_hash,
 		        u.byte_size, COALESCE(u.filename, ''), COALESCE(u.ip, ''), u.api_token_id,
 		        COALESCE(t.label, ''), u.expires_at, u.created_at
 		 FROM uploads u LEFT JOIN api_tokens t ON t.id = u.api_token_id
-		 ORDER BY u.created_at DESC LIMIT 100`)
+		 ORDER BY u.created_at DESC, u.id DESC LIMIT ? OFFSET ?`,
+		AdminPageSize+1, (page-1)*AdminPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +435,7 @@ func (a *App) recentUploads(ctx context.Context) ([]Upload, error) {
 			&expires, &created); err != nil {
 			return nil, err
 		}
-		u.ExpiresAt = time.Unix(expires, 0).UTC()
+		u.ExpiresAt = expiresTime(expires)
 		u.CreatedAt = time.Unix(created, 0).UTC()
 		out = append(out, u)
 	}
@@ -381,10 +444,10 @@ func (a *App) recentUploads(ctx context.Context) ([]Upload, error) {
 
 func (a *App) activeTokens(ctx context.Context) ([]adminToken, error) {
 	rows, err := a.DB.QueryContext(ctx,
-		`SELECT t.id, t.label, t.last_used_at, t.created_at, COUNT(u.id)
-		 FROM api_tokens t LEFT JOIN uploads u ON u.api_token_id = t.id
+		`SELECT t.id, t.label, t.last_used_at, t.created_at, COUNT(u.id), COALESCE(SUM(u.byte_size), 0)
+		 FROM api_tokens t LEFT JOIN uploads u ON u.api_token_id = t.id AND (u.expires_at = 0 OR u.expires_at > ?)
 		 WHERE t.revoked_at IS NULL
-		 GROUP BY t.id ORDER BY t.created_at DESC LIMIT 100`)
+		 GROUP BY t.id ORDER BY t.created_at DESC LIMIT 100`, time.Now().Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -395,7 +458,7 @@ func (a *App) activeTokens(ctx context.Context) ([]adminToken, error) {
 		var t adminToken
 		var lastUsed sql.NullInt64
 		var created int64
-		if err := rows.Scan(&t.ID, &t.Label, &lastUsed, &created, &t.Uploads); err != nil {
+		if err := rows.Scan(&t.ID, &t.Label, &lastUsed, &created, &t.Uploads, &t.Bytes); err != nil {
 			return nil, err
 		}
 		t.LastUsedAt = nullTime(lastUsed)
@@ -405,11 +468,12 @@ func (a *App) activeTokens(ctx context.Context) ([]adminToken, error) {
 	return out, rows.Err()
 }
 
-func (a *App) recentEvents(ctx context.Context) ([]adminEvent, error) {
+func (a *App) recentEvents(ctx context.Context, page int) ([]adminEvent, error) {
 	rows, err := a.DB.QueryContext(ctx,
 		`SELECT action, COALESCE(content_hash, ''), COALESCE(ip, ''), COALESCE(content_type, ''),
 		        COALESCE(byte_size, 0), created_at
-		 FROM upload_events ORDER BY created_at DESC LIMIT 200`)
+		 FROM upload_events ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+		AdminPageSize+1, (page-1)*AdminPageSize)
 	if err != nil {
 		return nil, err
 	}

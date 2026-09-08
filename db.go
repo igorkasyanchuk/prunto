@@ -35,10 +35,12 @@ CREATE TABLE IF NOT EXISTS uploads (
   filename      TEXT,
   ip            TEXT,
   api_token_id  INTEGER REFERENCES api_tokens(id) ON DELETE SET NULL,
-  expires_at    INTEGER NOT NULL,
+  expires_at    INTEGER NOT NULL, -- unix seconds, 0 = never
   created_at    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS uploads_expires_at ON uploads(expires_at);
+-- The admin dashboard sums bytes per token; without this the join scans uploads per token.
+CREATE INDEX IF NOT EXISTS uploads_api_token_id ON uploads(api_token_id);
 
 -- Append-only, and deliberately outlives the file it describes: an abuse report almost always
 -- arrives after the content is gone, and without this there is nothing left to answer it with.

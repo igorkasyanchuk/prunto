@@ -3,48 +3,228 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>prunto</title>
+<title>Prunto — screenshots for pull requests, self-hosted</title>
+<meta name="description" content="Self-hosted image host for PR screenshots, built for AI coding agents. One curl, paste the markdown, done.">
 <link rel="icon" href="/static/favicon.svg?v={{.Assets}}" type="image/svg+xml">
 <link rel="alternate icon" href="/static/favicon-32.png?v={{.Assets}}" sizes="32x32">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{.Assets}}">
 <link rel="stylesheet" href="/static/app.css?v={{.Assets}}">
 </head>
-<body>
-<main class="wrap" id="app" data-accept="{{.Accept}}">
-  <h1>prunto</h1>
-  <p class="lede">
-    Drop a screenshot, get a public URL you can paste straight into a pull request.
-    Uploads are deleted after {{.Retention}}.
-  </p>
-
-  <label class="token">
-    API token
-    <input type="password" id="token" placeholder="prunto_..." autocomplete="off" spellcheck="false">
-    <small>Kept in this browser only. Create one in <a href="/admin">the admin page</a>.</small>
-  </label>
-
-  <label class="drop" id="drop">
-    <input type="file" id="file" accept="{{.Accept}}">
-    <span id="hint">Drop a file here, paste, or click to choose one</span>
-  </label>
-
-  <p class="limits">PNG, JPEG, GIF, WebP, MP4, WebM &middot; up to {{.MaxMB}} MB</p>
-
-  <div class="result" id="result" hidden>
-    <img id="preview" alt="" hidden>
-    <video id="videoPreview" controls hidden></video>
-    <input type="text" id="markdown" readonly>
-    <div class="row">
-      <button type="button" id="copy" data-copy-target="markdown">Copy markdown</button>
-      <button type="button" id="remove">Delete now</button>
+<body class="landing">
+<a class="skip" href="#agent">Skip to agent setup</a>
+<header class="nav">
+  <nav class="nav-inner" aria-label="Page">
+    <a class="wordmark" href="#top">Prunto</a>
+    <div class="nav-links">
+      <a href="#why">Why</a>
+      <a href="#how">How it works</a>
+      <a href="/prunto-screenshot/SKILL.md">API</a>
+      <a class="gh" href="https://github.com/igorkasyanchuk/prunto" rel="noreferrer" data-repo="igorkasyanchuk/prunto">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub<span class="stars" hidden>&nbsp;&#9733; <span id="stars"></span></span>
+      </a>
     </div>
-    <p class="expiry" id="expiry"></p>
-  </div>
+  </nav>
+</header>
 
-  <p class="error" id="error" hidden></p>
+<main class="wrap landing">
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <p class="eyebrow">Open source, MIT &middot; Self-hosted, one container &middot; Built for AI coding agents</p>
+    <h1 id="hero-title">Supercharge your PR review process.</h1>
+    <p class="hero-sub">
+      Your AI agent takes the screenshot, uploads it here with one <code>curl</code>, and the
+      picture is in the PR before you open it.
+    </p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#agent">Set up your agent</a>
+      <a class="btn" href="#how">How it works</a>
+    </div>
+  </section>
 
-  <section class="install">
-    <h2>Use it from your AI coding agent</h2>
+  <section class="section" id="why" aria-labelledby="why-title">
+    <h2 id="why-title">The problem</h2>
+    <p class="lede">
+      GitHub has no API to attach an image to a PR description. Your agent takes the screenshot
+      and has nowhere to put it.
+    </p>
+
+    <div class="compare">
+      <div class="compare-col compare-without">
+        <h3><span class="compare-mark" aria-hidden="true">&times;</span>Without Prunto</h3>
+        <ul>
+          <li class="main-pain">You upload every screenshot by hand, for every PR, every time.</li>
+          <li>Agent says "screenshot attached". It is not.</li>
+          <li>You run the branch and drag the screenshot in yourself.</li>
+          <li>Reviewer asks "what does this look like?"</li>
+        </ul>
+      </div>
+      <div class="compare-vs" aria-hidden="true">vs</div>
+      <div class="compare-col compare-with">
+        <h3><span class="compare-mark" aria-hidden="true">&check;</span>With Prunto</h3>
+        <ul>
+          <li>Agent uploads with one <code>curl</code>, pastes the markdown.</li>
+          <li>Screenshot is in the PR before you open it.</li>
+          <li>Reviewer sees the change in five seconds.</li>
+        </ul>
+      </div>
+    </div>
+
+    <ul class="wins">
+      <li class="win">
+        <span class="win-tag">Problem</span>
+        <strong>No way for an agent to attach an image</strong>
+        <span class="win-how"><b>How</b> A public URL per upload, plus a skill that tells the agent to use it.</span>
+      </li>
+      <li class="win">
+        <span class="win-tag">Problem</span>
+        <strong>Screenshots leak or pile up</strong>
+        <span class="win-how"><b>How</b> Your own instance, token-gated, metadata stripped, expiry on your terms.</span>
+      </li>
+      <li class="win">
+        <span class="win-tag">Problem</span>
+        <strong>Slow reviews without a picture</strong>
+        <span class="win-how"><b>How</b> Every UI PR ships with proof, every time, because the agent does it.</span>
+      </li>
+      <li class="win">
+        <span class="win-tag">Problem</span>
+        <strong>Another paid service</strong>
+        <span class="win-how"><b>How</b> Free, MIT, one container. No bucket, no CDN, no account.</span>
+      </li>
+    </ul>
+  </section>
+
+  <section class="section" id="how" aria-labelledby="how-title">
+    <h2 id="how-title">How it works</h2>
+    <p class="lede">Bytes in, public URL out. Nothing is decoded on the way through.</p>
+
+    <div class="flow-wrap">
+    <!-- The scene: a screenshot card leaves the agent, is swallowed by Prunto and comes out
+         with its metadata chips flying off, picks up a URL, docks into a PR body, and the
+         reviewer approves. Every movement is a CSS keyframe on one 10s period, so nothing can
+         drift out of step. Hidden under 720px and for reduced motion; the cards below carry the
+         same story in text. -->
+    <svg class="scene" viewBox="0 0 1000 250" aria-hidden="true" focusable="false">
+      <path class="scene-track" d="M100 150 H900"/>
+
+      <!-- PR body above node 4, with an empty image slot the card docks into -->
+      <g class="pr" transform="translate(628 22)">
+        <rect class="pr-body" width="144" height="98" rx="8"/>
+        <rect class="pr-line" x="12" y="12" width="70" height="6" rx="3"/>
+        <rect class="pr-line" x="12" y="26" width="110" height="5" rx="2.5"/>
+        <rect class="pr-line" x="12" y="37" width="90" height="5" rx="2.5"/>
+        <rect class="pr-slot" x="12" y="50" width="120" height="36" rx="4"/>
+        <g class="docked" transform="translate(50 54)">
+          <rect class="shot" width="44" height="28" rx="3"/>
+          <path class="shot-hills" d="M4 24 l10 -10 8 7 6 -5 12 8 z"/>
+          <circle class="shot-sun" cx="34" cy="8" r="3"/>
+        </g>
+        <!-- position on the wrapper: a CSS transform animation replaces an element's own
+             transform attribute, so the animated group must not carry one -->
+        <g transform="translate(120 10)"><g class="pr-check">
+          <circle r="8"/><path d="M-3.5 0.5 l2.5 2.5 5 -6"/>
+        </g></g>
+      </g>
+
+      <!-- the travelling screenshot; moved along the track by CSS (offset-path in app.css),
+           not SMIL, so it shares one clock with every reveal below -->
+      <g class="shot-moving">
+        <g transform="translate(-22 -14)">
+          <rect class="shot" width="44" height="28" rx="3"/>
+          <path class="shot-hills" d="M4 24 l10 -10 8 7 6 -5 12 8 z"/>
+          <circle class="shot-sun" cx="34" cy="8" r="3"/>
+        </g>
+      </g>
+
+      <!-- the URL it gets -->
+      <text class="url" x="500" y="108">https://yoursite.com/blobs/7sAwxTzz.png</text>
+
+      <!-- nodes, drawn last so the card passes behind them -->
+      <g class="scene-node scene-n1" transform="translate(100 150)">
+        <circle r="30"/>
+        <g class="scene-icon"><rect x="-11" y="-9" width="22" height="16" rx="2"/><path d="M-6 -3 l3 3 -3 3 M0 3 h6"/></g>
+      </g>
+      <g class="scene-node scene-n2" transform="translate(300 150)">
+        <circle r="30"/>
+        <g class="scene-icon"><path d="M0 -12 l10 4 v7 c0 6 -4.5 10 -10 12 c-5.5 -2 -10 -6 -10 -12 v-7 z"/><path d="M-4 0 l3 3 5 -6"/></g>
+      </g>
+      <g class="scene-node scene-n3" transform="translate(500 150)">
+        <circle r="30"/>
+        <g class="scene-icon"><path d="M-2 3 a5 5 0 0 0 7 0 l4 -4 a5 5 0 0 0 -7 -7 l-1.5 1.5"/><path d="M2 -3 a5 5 0 0 0 -7 0 l-4 4 a5 5 0 0 0 7 7 l1.5 -1.5"/></g>
+      </g>
+      <g class="scene-node scene-n4" transform="translate(700 150)">
+        <circle r="30"/>
+        <g class="scene-icon"><circle cx="-7" cy="-7" r="3"/><circle cx="-7" cy="7" r="3"/><circle cx="7" cy="-5" r="3"/><path d="M-7 -4 v8 M7 -2 c0 4 -5 4 -10 6"/></g>
+      </g>
+      <g class="scene-node scene-n5" transform="translate(900 150)">
+        <circle r="30"/>
+        <g class="scene-icon"><circle r="11"/><path d="M-4 -3 h.1 M4 -3 h.1 M-5 3 c2 3 8 3 10 0"/></g>
+      </g>
+      <g transform="translate(900 92)"><g class="lgtm">
+        <rect x="-34" y="-14" width="68" height="28" rx="14"/>
+        <text y="5">LGTM</text>
+      </g></g>
+      <!-- metadata chips shed at Prunto -->
+      <g class="chips" transform="translate(300 150)">
+        <g class="chip chip-1"><rect x="-22" y="-10" width="44" height="20" rx="10"/><text y="4">EXIF</text></g>
+        <g class="chip chip-2"><rect x="-20" y="-10" width="40" height="20" rx="10"/><text y="4">GPS</text></g>
+        <g class="chip chip-3"><rect x="-20" y="-10" width="40" height="20" rx="10"/><text y="4">XMP</text></g>
+      </g>
+
+      <text class="scene-label" x="100" y="205">agent</text>
+      <text class="scene-label" x="300" y="205">Prunto</text>
+      <text class="scene-label" x="700" y="205">pull request</text>
+      <text class="scene-label" x="900" y="205">happy review</text>
+    </svg>
+    <span class="flow-track" aria-hidden="true"></span>
+    <ol class="flow" aria-label="Upload flow">
+      <li class="node">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 9l3 2.5L7 14M12 14h5"/></svg>
+        <strong>Agent or curl</strong>
+        <span>one request with a bearer token</span>
+      </li>
+      <li class="node node-core">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 7.8-8 9-4.6-1.2-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+        <strong>Prunto sanitizes</strong>
+        <span>magic bytes &middot; strip metadata &middot; hash blocklist</span>
+      </li>
+      <li class="node">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg>
+        <strong>Public URL</strong>
+        <span>random key, no listing</span>
+      </li>
+      <li class="node">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 3-4 3-8 4"/></svg>
+        <strong>GitHub PR renders it</strong>
+        <span>paste the markdown</span>
+      </li>
+      <li class="node">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M8.5 14c1.5 2 5.5 2 7 0"/></svg>
+        <strong>Happy review</strong>
+        <span>reviewer sees it, approves</span>
+      </li>
+    </ol>
+    </div>
+
+    <ol class="steps">
+      <li><strong>Upload.</strong> Your agent (or you) posts the file with a bearer token.</li>
+      <li><strong>Sanitize.</strong> Type is checked by magic bytes, metadata is stripped, the hash is checked against the blocklist. No image decoder runs.</li>
+      <li><strong>Paste.</strong> You get a public URL and ready-made markdown for the PR body.</li>
+      <li><strong>Review.</strong> The reviewer sees the change and approves.{{if .HasRetention}} The file is purged after {{.Retention}}, or sooner if you ask.{{else}} The file stays until you delete it, or expires when you ask.{{end}}</li>
+    </ol>
+
+    <pre class="snippet-pre" aria-label="Upload with curl"><code>curl -sf -H "Authorization: Bearer $PRUNTO_API_TOKEN" -F "file=@shot.png" https://yoursite.com/api/v1/uploads</code></pre>
+
+    <ul class="facts" aria-label="Key facts">
+      <li>MIT, free forever</li>
+      <li>One container + SQLite</li>
+      <li>Token-gated uploads</li>
+      <li>Metadata stripped, no image decoder</li>
+      <li>Server makes no outbound requests</li>
+    </ul>
+  </section>
+
+  <section class="section install" id="agent" aria-labelledby="agent-title">
+    <h2 id="agent-title">Agent setup</h2>
     <p class="install-lede">
       The skill teaches your AI coding agent to upload a screenshot here and paste it straight into a
       pull request. Install it once for everything you work on, or just for one repository.
@@ -93,7 +273,7 @@ export PRUNTO_API_TOKEN=your-token</code></pre>
    root instead. If you keep reusable instructions somewhere else entirely,
    put it there and adjust both paths to match.
 
-2. Ask me for my prunto API token, then add
+2. Ask me for my Prunto API token, then add
    export PRUNTO_API_TOKEN=&lt;the token&gt;
    to my shell profile and tell me to open a new terminal.
 
@@ -103,18 +283,48 @@ export PRUNTO_API_TOKEN=your-token</code></pre>
 For context: the file explains how to upload a local image, GIF or short video
 to {{.BaseURL}} and get back a public URL, so it can be pasted
 into a GitHub pull request body. I create tokens at {{.BaseURL}}/admin.
-Uploads are deleted after {{.Retention}}.</pre>
+{{if .HasRetention}}Uploads are deleted after {{.Retention}}.{{else}}Uploads are kept until deleted.{{end}}</pre>
     </div>
   </section>
 
-  <p class="limits">
-    <!-- Relative on purpose: BaseURL may differ from the origin the browser reached
-         (local mode defaults to localhost); a relative link always works. -->
-    <a href="/prunto-screenshot/SKILL.md">Read the skill</a> &middot;
-    <a href="/abuse_reports/new">Report content</a>
-  </p>
+  <section class="section" id="config" aria-labelledby="config-title">
+    <h2 id="config-title">Configuration</h2>
+    <p class="lede">Environment variables. This instance's current values where they are public.</p>
+    <div class="table-scroll">
+    <table>
+      <tr><th>Variable</th><th>What it does</th><th>Here</th></tr>
+      <tr><td class="mono">RETENTION</td><td>How long an upload lives. <code>never</code> by default; <code>30d</code>, <code>12h</code>, <code>90m</code>. Each upload can ask for less with <code>expires_in</code>, never more.</td><td>{{.Retention}}</td></tr>
+      <tr><td class="mono">PRUNTO_BASE_URL</td><td>Public origin, used in every URL handed out and in the skill.</td><td class="mono">{{.BaseURL}}</td></tr>
+      <tr><td class="mono">ADMIN_USER</td><td rowspan="2">Gate <a href="/admin">/admin</a>. Either unset means closed.</td><td rowspan="2"></td></tr>
+      <tr><td class="mono">ADMIN_PASSWORD</td></tr>
+      <tr><td class="mono">TRUST_PROXY</td><td><code>none</code>, <code>forwarded</code> (your reverse proxy) or <code>cloudflare</code>. Rate limits key on the resulting client address.</td><td></td></tr>
+      <tr><td class="mono">DATA_DIR</td><td>SQLite file and the blobs. One volume, the only thing to back up.</td><td></td></tr>
+      <tr><td class="mono">PORT</td><td>Listen port, default 3000.</td><td></td></tr>
+      <tr><td class="mono">ANALYTICS_HTML</td><td>A tracker <code>&lt;script&gt;</code> tag (Umami, Plausible), rendered on this page only. Its host is allowed by the page's CSP.</td><td></td></tr>
+    </table>
+    </div>
+
+    <h3 class="sub">Limits</h3>
+    <ul class="limits-list">
+      <li>PNG, JPEG, GIF, WebP, MP4, WebM. Typed from magic bytes, never from the filename.</li>
+      <li>{{.MaxMB}} MB per file, 50 megapixels per image.</li>
+      <li>Per token: 20 uploads an hour, 200 MB a day.</li>
+      <li>Any upload can set its own <code>expires_in</code>; the instance retention above is the ceiling.</li>
+    </ul>
+    <p class="limits">Full detail in <a href="https://github.com/igorkasyanchuk/prunto/blob/master/docs/API.md" rel="noreferrer">API and configuration</a>.</p>
+  </section>
 </main>
-<script src="/static/drop.js?v={{.Assets}}"></script>
+
+<footer class="footer">
+  <!-- Relative on purpose: BaseURL may differ from the origin the browser reached
+       (local mode defaults to localhost); a relative link always works. -->
+  <a href="/prunto-screenshot/SKILL.md">Read the skill</a> &middot;
+  <a href="/abuse_reports/new">Report content</a> &middot;
+  <a href="https://github.com/igorkasyanchuk/prunto" rel="noreferrer">Source on GitHub</a> &middot;
+  <span>Free &middot; MIT &middot; self-hosted</span>
+</footer>
 <script src="/static/copy.js?v={{.Assets}}" defer></script>
+<script src="/static/stars.js?v={{.Assets}}" defer></script>
+{{.Analytics}}
 </body>
 </html>{{end}}

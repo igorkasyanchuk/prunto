@@ -21,6 +21,8 @@ services:
       # the one you point at it. A bare origin, no trailing slash.
       - key: PRUNTO_BASE_URL
         sync: false
+      - key: RETENTION
+        value: never
       - key: ADMIN_USER
         value: admin
       - key: ADMIN_PASSWORD

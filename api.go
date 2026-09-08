@@ -111,9 +111,17 @@ func (a *App) handleCreateUpload(w http.ResponseWriter, r *http.Request) {
 		"markdown":     upload.Markdown(url),
 		"content_type": upload.ContentType,
 		"delete_url":   a.Config.BaseURL + "/api/v1/uploads/" + upload.DeleteToken,
-		"expires_at":   upload.ExpiresAt.Format(time.RFC3339),
+		"expires_at":   expiresJSON(upload),
 		"byte_size":    upload.ByteSize,
 	})
+}
+
+// expiresJSON is the RFC 3339 expiry, or null for an upload kept until deleted.
+func expiresJSON(u Upload) any {
+	if !u.Expires() {
+		return nil
+	}
+	return u.ExpiresAt.Format(time.RFC3339)
 }
 
 // readUploadPart walks the multipart body and returns the file, its declared name and any
