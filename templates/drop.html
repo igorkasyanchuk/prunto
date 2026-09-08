@@ -16,8 +16,8 @@
   <nav class="nav-inner" aria-label="Page">
     <a class="wordmark" href="#top">Prunto</a>
     <div class="nav-links">
-      <a href="#why">Why</a>
       <a href="#how">How it works</a>
+      <a href="#why">Why</a>
       <a href="/prunto-screenshot/SKILL.md">API</a>
       <a class="gh" href="https://github.com/igorkasyanchuk/prunto" rel="noreferrer" data-repo="igorkasyanchuk/prunto">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -39,58 +39,6 @@
       <a class="btn btn-primary" href="#agent">Set up your agent</a>
       <a class="btn" href="#how">How it works</a>
     </div>
-  </section>
-
-  <section class="section" id="why" aria-labelledby="why-title">
-    <h2 id="why-title">The problem</h2>
-    <p class="lede">
-      GitHub has no API to attach an image to a PR description. Your agent takes the screenshot
-      and has nowhere to put it.
-    </p>
-
-    <div class="compare">
-      <div class="compare-col compare-without">
-        <h3><span class="compare-mark" aria-hidden="true">&times;</span>Without Prunto</h3>
-        <ul>
-          <li class="main-pain">You upload every screenshot by hand, for every PR, every time.</li>
-          <li>Agent says "screenshot attached". It is not.</li>
-          <li>You run the branch and drag the screenshot in yourself.</li>
-          <li>Reviewer asks "what does this look like?"</li>
-        </ul>
-      </div>
-      <div class="compare-vs" aria-hidden="true">vs</div>
-      <div class="compare-col compare-with">
-        <h3><span class="compare-mark" aria-hidden="true">&check;</span>With Prunto</h3>
-        <ul>
-          <li>Agent uploads with one <code>curl</code>, pastes the markdown.</li>
-          <li>Screenshot is in the PR before you open it.</li>
-          <li>Reviewer sees the change in five seconds.</li>
-        </ul>
-      </div>
-    </div>
-
-    <ul class="wins">
-      <li class="win">
-        <span class="win-tag">Problem</span>
-        <strong>No way for an agent to attach an image</strong>
-        <span class="win-how"><b>How</b> A public URL per upload, plus a skill that tells the agent to use it.</span>
-      </li>
-      <li class="win">
-        <span class="win-tag">Problem</span>
-        <strong>Screenshots leak or pile up</strong>
-        <span class="win-how"><b>How</b> Your own instance, token-gated, metadata stripped, expiry on your terms.</span>
-      </li>
-      <li class="win">
-        <span class="win-tag">Problem</span>
-        <strong>Slow reviews without a picture</strong>
-        <span class="win-how"><b>How</b> Every UI PR ships with proof, every time, because the agent does it.</span>
-      </li>
-      <li class="win">
-        <span class="win-tag">Problem</span>
-        <strong>Another paid service</strong>
-        <span class="win-how"><b>How</b> Free, MIT, one container. No bucket, no CDN, no account.</span>
-      </li>
-    </ul>
   </section>
 
   <section class="section" id="how" aria-labelledby="how-title">
@@ -220,6 +168,58 @@
       <li>Token-gated uploads</li>
       <li>Metadata stripped, no image decoder</li>
       <li>Server makes no outbound requests</li>
+    </ul>
+  </section>
+
+  <section class="section" id="why" aria-labelledby="why-title">
+    <h2 id="why-title">The problem</h2>
+    <p class="lede">
+      GitHub has no API to attach an image to a PR description. Your agent takes the screenshot
+      and has nowhere to put it.
+    </p>
+
+    <div class="compare">
+      <div class="compare-col compare-without">
+        <h3><span class="compare-mark" aria-hidden="true">&times;</span>Without Prunto</h3>
+        <ul>
+          <li class="main-pain">You upload every screenshot by hand, for every PR, every time.</li>
+          <li>Agent says "screenshot attached". It is not.</li>
+          <li>You run the branch and drag the screenshot in yourself.</li>
+          <li>Reviewer asks "what does this look like?"</li>
+        </ul>
+      </div>
+      <div class="compare-vs" aria-hidden="true">vs</div>
+      <div class="compare-col compare-with">
+        <h3><span class="compare-mark" aria-hidden="true">&check;</span>With Prunto</h3>
+        <ul>
+          <li>Agent uploads with one <code>curl</code>, pastes the markdown.</li>
+          <li>Screenshot is in the PR before you open it.</li>
+          <li>Reviewer sees the change in five seconds.</li>
+        </ul>
+      </div>
+    </div>
+
+    <ul class="wins">
+      <li class="win">
+        <span class="win-tag">Problem</span>
+        <strong>No way for an agent to attach an image</strong>
+        <span class="win-how"><b>How</b> A public URL per upload, plus a skill that tells the agent to use it.</span>
+      </li>
+      <li class="win">
+        <span class="win-tag">Problem</span>
+        <strong>Screenshots leak or pile up</strong>
+        <span class="win-how"><b>How</b> Your own instance, token-gated, metadata stripped, expiry on your terms.</span>
+      </li>
+      <li class="win">
+        <span class="win-tag">Problem</span>
+        <strong>Slow reviews without a picture</strong>
+        <span class="win-how"><b>How</b> Every UI PR ships with proof, every time, because the agent does it.</span>
+      </li>
+      <li class="win">
+        <span class="win-tag">Problem</span>
+        <strong>Another paid service</strong>
+        <span class="win-how"><b>How</b> Free, MIT, one container. No bucket, no CDN, no account.</span>
+      </li>
     </ul>
   </section>
 
